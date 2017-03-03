@@ -83,22 +83,22 @@ void ClContext::execute(ClInstructionSequence* seq) {
 		instruction_pointer++;
 
 		switch (instruction.opcode) {
-		case OPCODE_INDEX("HALT"): {
+			case OPCODE_INDEX("HALT"): {
 				cl_crash("Halt!");
 				break;
 			}
-		case OPCODE_INDEX("POP"): {
+			case OPCODE_INDEX("POP"): {
 				pop(stack)->dec_ref();
 				break;
 			}
-		case OPCODE_INDEX("MAKE_INT"): {
+			case OPCODE_INDEX("MAKE_INT"): {
 				auto obj = new ClInt();
 				obj->ref_count = 1;
 				obj->value = instruction.args[0];
 				stack.push_back(obj);
 				break;
 			}
-		case OPCODE_INDEX("MAKE_CONS"): {
+			case OPCODE_INDEX("MAKE_CONS"): {
 				auto obj = new ClCons();
 				obj->ref_count = 1;
 				obj->head = pop(stack);
@@ -116,22 +116,28 @@ void ClContext::execute(ClInstructionSequence* seq) {
 				stack.push_back(obj);
 				break;
 			}
-		case OPCODE_INDEX("MAKE_RECORD"): {
+			case OPCODE_INDEX("MAKE_RECORD"): {
 				auto obj = new ClRecord(data_ctx->nil, instruction.args[0], instruction.args[1]);
 				obj->ref_count = 1;
 				stack.push_back(obj);
 				break;
 			}
-		case OPCODE_INDEX("MAKE_MAP"): {
+			case OPCODE_INDEX("MAKE_MAP"): {
 				auto obj = new ClMap();
 				obj->ref_count = 1;
 				stack.push_back(obj);
 				break;
 			}
-		case OPCODE_INDEX("MAKE_STRING"): {
+			case OPCODE_INDEX("MAKE_STRING"): {
 				auto obj = new ClString();
 				obj->ref_count = 1;
 				stack.push_back(obj);
+				break;
+			}
+			case OPCODE_INDEX("UNARY_OP"): {
+				break;
+			}
+			case OPCODE_INDEX("BINARY_OP"): {
 				break;
 			}
 		}
