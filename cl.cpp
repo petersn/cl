@@ -91,10 +91,6 @@ ClInstructionSequence* ClInstructionSequence::decode_opcodes(const string& s) {
 
 		// If it's a MAKE_FUNCTION opcode we separately decode the closure description.
 		if (instr.opcode == OPCODE_INDEX("MAKE_FUNCTION")) {
-//			const char* descriptor_str = &s[string_index];
-//			size_t effective_length = s.size() - string_index;
-//			size_t bytes_consumed = instr.make_function_descriptor.read_from(descriptor_str, effective_length);
-//			string_index += bytes_consumed;
 			instr.make_function_descriptor.read_from(&instr.data_field[0], instr.data_field.length());
 		}
 
@@ -156,6 +152,8 @@ static ClObj* pop(vector<ClObj*>& stack) {
 }
 
 void ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
+	cout << "=== exec ===" << endl;
+
 	// Main interpreter.
 	vector<ClObj*> stack;
 	int instruction_pointer = 0;
@@ -164,6 +162,8 @@ void ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 			cl_crash("Walked off end of program.");
 		ClInstruction& instruction = seq->instructions[instruction_pointer];
 		instruction_pointer++;
+
+		cout << "Executing: " << cl_opcode_descs[instruction.opcode].name << endl;
 
 		switch (instruction.opcode) {
 			case OPCODE_INDEX("HALT"): {
@@ -204,7 +204,7 @@ void ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 				break;
 			}
 			case OPCODE_INDEX("MAKE_RECORD"): {
-				auto obj = new ClRecord(data_ctx->nil, instruction.args[0], instruction.args[1]);
+				auto obj = new ClRecord(instruction.args[0], instruction.args[1], data_ctx->nil);
 				obj->ref_count = 1;
 				data_ctx->register_object(obj);
 
@@ -233,8 +233,42 @@ void ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 				obj->ref_count = 1;
 				data_ctx->register_object(obj);
 
-//				obj->contents = instruction.data_field;
+				// To make a function we produce a new record for its scope.
+				ClMakeFunctionDescriptor& desc = instruction.make_function_descriptor;
+				ClRecord* func_scope = new ClRecord(0, desc.subscope_length, data_ctx->nil);
+				func_scope->ref_count = 1;
+				data_ctx->register_object(func_scope);
+				// We then copy into the scope as per our closure descriptor.
+				for (auto& p : desc.subscope_closure_descriptor)
+					func_scope->store(p.second, scope->load(p.first));
+				// Finally, we bind this scope into our function.
+				obj->executable_content = desc.executable_content;
+				obj->closure = func_scope;
 				stack.push_back(obj);
+				break;
+			}
+			case OPCODE_INDEX("APPLY"): {
+				// First we pop the function argument off the stack.
+				// We do not decrement the ref count, because we will put this into the scope of the function call, which will keep the ref-count conserved.
+				ClObj* function_argument = pop(stack);
+				// Now we pop the actual function off the stack.
+				// We will decrement the ref count on this function, but only once we're done evaluating everything.
+				ClObj* possibly_function_obj = pop(stack);
+				// Type check the object.
+				if (possibly_function_obj->kind != CL_FUNCTION)
+					cl_crash("Attempted to call non-function.");
+				ClFunction* function_obj = static_cast<ClFunction*>(possibly_function_obj);
+				// We duplicate the function closure to get a scope to execute in.
+				// Note that we neither register nor set the ref count on this record, because we're about to throw it away.
+				ClRecord* child_scope = function_obj->closure->duplicate();
+				// We set the magic value 0 in the child_scope to be the passed in argument.
+				child_scope->store(0, function_argument);
+				// Do execution!
+				execute(child_scope, function_obj->executable_content);
+				// By deleting the child scope we effectively decrement the ref count on function_argument, completing our obligation.
+				delete child_scope;
+				// Now that execution of the call is over, it is safe to decerement the ref count on function_obj.
+				function_obj->dec_ref();
 				break;
 			}
 			case OPCODE_INDEX("UNARY_OP"): {
@@ -270,7 +304,7 @@ int main(int argc, char** argv) {
 	cout << *program;
 
 	auto ctx = new ClContext();
-	auto root_scope = new ClRecord(ctx->data_ctx->nil, 0, 0);
+	auto root_scope = new ClRecord(0, 0, ctx->data_ctx->nil);
 	ctx->execute(root_scope, program);
 }
 

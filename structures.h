@@ -4,6 +4,7 @@
 #define _CL_STRUCTURES_H
 
 #include <iostream>
+#include <ostream>
 #include <unordered_set>
 #include <map>
 #include <string>
@@ -37,15 +38,22 @@ struct ClObj {
 
 	virtual ~ClObj();
 	bool test_kind(ClKind kind);
+	virtual void pprint(std::ostream& os) const = 0;
 };
+
+std::ostream& operator << (std::ostream& os, const ClObj& obj);
 
 struct ClNil : public ClObj {
 	const ClKind kind = CL_NIL;
+
+	virtual void pprint(std::ostream& os) const;
 };
 
 struct ClInt : public ClObj {
 	const ClKind kind = CL_INT;
 	cl_int_t value;
+
+	virtual void pprint(std::ostream& os) const;
 };
 
 struct ClCons : public ClObj {
@@ -53,29 +61,40 @@ struct ClCons : public ClObj {
 	ClObj* head;
 	ClCons* tail;
 
-	virtual ~ClCons() override;
+	virtual ~ClCons();
+	virtual void pprint(std::ostream& os) const;
 };
 
 struct ClRecord : public ClObj {
 	const ClKind kind = CL_RECORD;
+	// XXX: TODO: Make a decision as to what type to use for these. Probably just plain int?
 	cl_int_t distinguisher;
 	cl_int_t length;
 	ClObj** contents;
 
-	ClRecord(ClObj* fill, cl_int_t distinguisher, cl_int_t length);
-	virtual ~ClRecord() override;
+	ClRecord(cl_int_t distinguisher, cl_int_t length, ClObj* fill=nullptr);
+	virtual ~ClRecord();
+	virtual void pprint(std::ostream& os) const;
+	ClObj* load(int index) const;
+	void store(int index, ClObj* value);
+
+	// When you duplicate, you are responsible for setting the ref count on the duplicate and registering it, if you want to keep it around.
+	ClRecord* duplicate() const;
 };
 
 struct ClMap : public ClObj {
 	const ClKind kind = CL_MAP;
 	std::map<cl_int_t, ClObj*> mapping;
 
-	virtual ~ClMap() override;
+	virtual ~ClMap();
+	virtual void pprint(std::ostream& os) const;
 };
 
 struct ClString : public ClObj {
 	const ClKind kind = CL_STRING;
 	std::string contents;
+
+	virtual void pprint(std::ostream& os) const;
 };
 
 struct ClFunction : public ClObj {
@@ -85,6 +104,8 @@ struct ClFunction : public ClObj {
 	ClInstructionSequence* executable_content;
 	// ... and a record for the local closure.
 	ClRecord* closure;
+
+	virtual void pprint(std::ostream& os) const;
 };
 
 struct ClDataContext {
