@@ -4,6 +4,8 @@
 #include <iostream>
 #include <istream>
 #include <ostream>
+#include <sstream>
+#include <fstream>
 #include <unistd.h>
 #include "cl.h"
 
@@ -102,17 +104,37 @@ ClInstructionSequence* ClInstructionSequence::decode_opcodes(const string& s) {
 	return result;
 }
 
-ostream& operator << (ostream& os, const ClInstructionSequence& seq) {
-	os << "Instructions: (" << seq.instructions.size() << ")" << endl;
-	for (auto& instr : seq.instructions) {
+void ClInstructionSequence::pprint(ostream& os, int indentation) const {
+//	if (indentation == 2)
+//		os << "Instructions: (" << instructions.size() << ")" << endl;
+	for (auto& instr : instructions) {
 		ClOpcodeDesc desc = cl_opcode_descs[instr.opcode];
-		os << "    " << desc.name;
+		for (int i = 0; i < indentation; i++)
+			os << " ";
+		os << desc.name;
 		for (int i = 0; i < desc.argument_count; i++) {
 			os << " ";
 			os << instr.args[i];
 		}
-		os << endl;
+		// If the instruction is a MAKE_FUNCTION, then recursively print the contents of the function.
+		if (instr.opcode == OPCODE_INDEX("MAKE_FUNCTION")) {
+			os << " " << instr.make_function_descriptor.subscope_length;
+			for (auto& p : instr.make_function_descriptor.subscope_closure_descriptor) {
+				os << " " << p.first << "->" << p.second;
+			}
+			os << " {" << endl;
+			instr.make_function_descriptor.executable_content->pprint(os, indentation+2);
+			for (int i = 0; i < indentation; i++)
+				os << " ";
+			os << "}" << endl;
+		} else {
+			os << endl;
+		}
 	}
+}
+
+ostream& operator << (ostream& os, const ClInstructionSequence& seq) {
+	seq.pprint(os);
 	return os;
 }
 
@@ -221,17 +243,30 @@ void ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 			case OPCODE_INDEX("BINARY_OP"): {
 				break;
 			}
+			default:
+				cl_crash("BUG BUG BUG: Unhandled opcode in execute.");
 		}
 	}
 }
 
-int main(int argc, char** argv) {
-	cin >> noskipws;
-	istream_iterator<char> it(cin);
-	istream_iterator<char> end;
-	string stdin_slurp(it, end);	
+string slurp_stream(ifstream& in) {
+	stringstream sstr;
+	sstr << in.rdbuf();
+	return sstr.str();
+}
 
-	auto program = ClInstructionSequence::decode_opcodes(stdin_slurp);
+int main(int argc, char** argv) {
+	ifstream ifs("bytecode.cl", ios::in | ios::binary);
+	string slurp = slurp_stream(ifs);
+
+//	cin >> noskipws;
+//	istream_iterator<char> it(cin);
+//	istream_iterator<char> end;
+//	string stdin_slurp(it, end);	
+
+	cout << "Read in " << slurp.size() << " bytes of bytecode." << endl;
+
+	auto program = ClInstructionSequence::decode_opcodes(slurp);
 	cout << *program;
 
 	auto ctx = new ClContext();

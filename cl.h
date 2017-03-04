@@ -96,6 +96,7 @@ struct ClInstructionSequence {
 	std::vector<ClInstruction> instructions;
 
 	static ClInstructionSequence* decode_opcodes(const std::string& s);
+	void pprint(std::ostream& os, int indentation=2) const;
 };
 
 std::ostream& operator << (std::ostream& os, const ClInstructionSequence& seq);
