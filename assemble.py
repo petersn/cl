@@ -10,16 +10,17 @@ with open("cl.h") as f:
 	data = f.read()
 data = data.split("// BEGIN-PY-PARSING")[1].split("// END-PY-PARSING")[0]
 
-regex = re.compile('ClOpcodeDesc[(]{"(.+)",\s*([0-9]+),\s*(false|true)\s*}[)]')
+regex = re.compile('ClOpcodeDesc[(]{"(.+)",\s*([0-9]+),\s*([-0-9]+),\s*(false|true)\s*}[)]')
 
 for line in data.split("\n"):
 	line = line.strip()
 	match = regex.search(line)
 	if match:
-		opcode_name, opcode_args, opcode_data_field = match.groups()
+		opcode_name, opcode_args, opcode_stack_delta, opcode_data_field = match.groups()
 		opcodes.append({
 			"name": opcode_name,
 			"args": int(opcode_args),
+			"stack_delta": int(opcode_stack_delta),
 			"data_field": {"true": True, "false": False}[opcode_data_field],
 		})
 

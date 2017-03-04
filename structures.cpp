@@ -19,7 +19,7 @@ void ClObj::inc_ref() {
 }
 
 ClObj::~ClObj() {
-	cout << "Calling parent!" << endl;
+//	cout << "Calling parent!" << endl;
 }
 
 bool ClObj::test_kind(ClKind kind) {

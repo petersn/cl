@@ -16,27 +16,36 @@ struct ClInstructionSequence;
 struct ClOpcodeDesc {
 	const char* name;
 	int argument_count;
+	int stack_delta;
 	bool takes_data_field;
 };
 
 constexpr ClOpcodeDesc cl_opcode_descs[] = {
+// Format: {Name, Argument count, Stack delta, Takes data field}
+// "Argument count" is the number of constant integer arguments that appear in the bytecode
+// stream, not the number of arguments read off the stack, or anything like that.
+// "Stack delta" is the change in the stack size after executing this opcode.
+// "Takes data field" is true if the opcode takes an arbitrary constant string in the stream.
+
 // For the sake of keeping things unified, my Python assembler parses this file to get the opcodes.
 // These tags facilitate that parsing.
 // WARNING: Commenting out an opcode won't stop the Python assembler from thinking it's real!
 // BEGIN-PY-PARSING
-	ClOpcodeDesc({"HALT",          0, false}),
-	ClOpcodeDesc({"POP",           0, false}),
-	ClOpcodeDesc({"LOAD",          1, false}),
-	ClOpcodeDesc({"STORE",         1, false}),
-	ClOpcodeDesc({"MAKE_INT",      1, false}),
-	ClOpcodeDesc({"MAKE_CONS",     0, false}),
-	ClOpcodeDesc({"MAKE_RECORD",   2, false}),
-	ClOpcodeDesc({"MAKE_MAP",      0, false}),
-	ClOpcodeDesc({"MAKE_STRING",   0, true }),
-	ClOpcodeDesc({"MAKE_FUNCTION", 0, true }),
-	ClOpcodeDesc({"APPLY",         0, false}),
-	ClOpcodeDesc({"UNARY_OP",      1, false}),
-	ClOpcodeDesc({"BINARY_OP",     1, false}),
+	ClOpcodeDesc({"HALT",          0,  0, false}),
+	ClOpcodeDesc({"NOP",           0,  0, false}),
+	ClOpcodeDesc({"POP",           0, -1, false}),
+	ClOpcodeDesc({"LOAD",          1,  1, false}),
+	ClOpcodeDesc({"STORE",         1, -1, false}),
+	ClOpcodeDesc({"MAKE_NIL",      0,  1, false}),
+	ClOpcodeDesc({"MAKE_INT",      1,  1, false}),
+	ClOpcodeDesc({"MAKE_CONS",     0, -1, false}),
+	ClOpcodeDesc({"MAKE_RECORD",   2,  1, false}),
+	ClOpcodeDesc({"MAKE_MAP",      0,  1, false}),
+	ClOpcodeDesc({"MAKE_STRING",   0,  1, true }),
+	ClOpcodeDesc({"MAKE_FUNCTION", 0,  1, true }),
+	ClOpcodeDesc({"CALL",          0, -1, false}),
+	ClOpcodeDesc({"BINARY_PLUS",   0, -1, false}),
+	ClOpcodeDesc({"PRINT",         0, -1, false}),
 // END-PY-PARSING
 };
 
@@ -108,6 +117,9 @@ public:
 
 	ClContext();
 	ClObj* execute(ClRecord* scope, ClInstructionSequence* seq);
+
+	// Operations.
+	ClObj* binary_plus(ClObj* left, ClObj* right);
 };
 
 #endif

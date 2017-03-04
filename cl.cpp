@@ -161,15 +161,38 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 		ClInstruction& instruction = seq->instructions[instruction_pointer];
 		instruction_pointer++;
 
-		cout << "Executing: " << cl_opcode_descs[instruction.opcode].name << endl;
+		cout << "Executing: " << cl_opcode_descs[instruction.opcode].name;
+		for (auto& p : stack)
+			cout << ", " << *p;
+		cout << endl;
 
 		switch (instruction.opcode) {
 			case OPCODE_INDEX("HALT"): {
 				cl_crash("Halt!");
 				break;
 			}
+			case OPCODE_INDEX("NOP"): {
+				break;
+			}
 			case OPCODE_INDEX("POP"): {
 				pop(stack)->dec_ref();
+				break;
+			}
+			case OPCODE_INDEX("LOAD"): {
+				ClObj* obj = scope->load(instruction.args[0]);
+				obj->inc_ref();
+				stack.push_back(obj);
+				break;
+			}
+			case OPCODE_INDEX("STORE"): {
+				ClObj* obj = pop(stack);
+				scope->store(instruction.args[0], obj);
+				obj->dec_ref();
+				break;
+			}
+			case OPCODE_INDEX("MAKE_NIL"): {
+				data_ctx->nil->inc_ref();
+				stack.push_back(data_ctx->nil);
 				break;
 			}
 			case OPCODE_INDEX("MAKE_INT"): {
@@ -186,6 +209,7 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 				obj->ref_count = 1;
 				data_ctx->register_object(obj);
 
+				// We don't decrement head's ref count, because it ends up in the cons cell.
 				obj->head = pop(stack);
 				ClObj* tail = pop(stack);
 				// Here we do the conversion of nils into nullptrs.
@@ -245,7 +269,7 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 				stack.push_back(obj);
 				break;
 			}
-			case OPCODE_INDEX("APPLY"): {
+			case OPCODE_INDEX("CALL"): {
 				// First we pop the function argument off the stack.
 				// We do not decrement the ref count, because we will put this into the scope of the function call, which will keep the ref-count conserved.
 				ClObj* function_argument = pop(stack);
@@ -276,10 +300,19 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 				stack.push_back(return_value);
 				break;
 			}
-			case OPCODE_INDEX("UNARY_OP"): {
+			case OPCODE_INDEX("BINARY_PLUS"): {
+				ClObj* left = pop(stack);
+				ClObj* right = pop(stack);
+				ClObj* result = binary_plus(left, right);
+				left->dec_ref();
+				right->dec_ref();
+				stack.push_back(result);
 				break;
 			}
-			case OPCODE_INDEX("BINARY_OP"): {
+			case OPCODE_INDEX("PRINT"): {
+				ClObj* obj = pop(stack);
+				cout << " ---> Printing: " << *obj << endl;
+				obj->dec_ref();
 				break;
 			}
 			default:
@@ -296,6 +329,18 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 	// The caller shouldn't increment the reference on this object when it inserts it somewhere, because
 	// its ref count is already one high from the fact that we exempted it from the above decrementation.
 	return top_of_stack;
+}
+
+ClObj* ClContext::binary_plus(ClObj* left, ClObj* right) {
+	// Fast case for ints.
+	if (left->kind == CL_INT and right->kind == CL_INT) {
+		auto obj = new ClInt();
+		obj->value = static_cast<ClInt*>(left)->value + static_cast<ClInt*>(right)->value;
+		data_ctx->register_object(obj);
+		obj->ref_count = 1;
+		return obj;
+	}
+	cl_crash("Adding invalid objects.");
 }
 
 string slurp_stream(ifstream& in) {
