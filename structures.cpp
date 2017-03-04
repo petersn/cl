@@ -60,5 +60,6 @@ ClDataContext::ClDataContext() {
 ClObj* ClDataContext::register_object(ClObj* obj) {
 	obj->parent = this;
 	objects.insert(obj);
+	return obj;
 }
 

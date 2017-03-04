@@ -7,8 +7,14 @@
 #include <unordered_set>
 #include <map>
 #include <string>
+#include <stdint.h>
 
-typedef long long cl_int_t;
+// Forward declarations for the cyclic include of cl.h.
+class ClDataContext;
+class ClRecord;
+typedef int64_t cl_int_t;
+
+#include "cl.h"
 
 enum ClKind {
 	CL_NIL,
@@ -17,10 +23,9 @@ enum ClKind {
 	CL_RECORD,
 	CL_MAP,
 	CL_STRING,
+	CL_FUNCTION,
 	CL_INVALID,
 };
-
-class ClDataContext;
 
 struct ClObj {
 	ClDataContext* parent;
@@ -71,6 +76,15 @@ struct ClMap : public ClObj {
 struct ClString : public ClObj {
 	const ClKind kind = CL_STRING;
 	std::string contents;
+};
+
+struct ClFunction : public ClObj {
+	const ClKind kind = CL_FUNCTION;
+
+	// Every function consists of an executable content...
+	ClInstructionSequence* executable_content;
+	// ... and a record for the local closure.
+	ClRecord* closure;
 };
 
 struct ClDataContext {

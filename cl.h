@@ -3,6 +3,9 @@
 #ifndef _CL_MAIN_HEADER_H
 #define _CL_MAIN_HEADER_H
 
+// Forward declaration for the cyclic include of structures.h.
+struct ClInstructionSequence;
+
 #include "structures.h"
 #include <string.h>
 #include <vector>
@@ -13,6 +16,7 @@
 struct ClOpcodeDesc {
 	const char* name;
 	int argument_count;
+	bool takes_data_field;
 };
 
 constexpr ClOpcodeDesc cl_opcode_descs[] = {
@@ -20,13 +24,19 @@ constexpr ClOpcodeDesc cl_opcode_descs[] = {
 // These tags facilitate that parsing.
 // WARNING: Commenting out an opcode won't stop the Python assembler from thinking it's real!
 // BEGIN-PY-PARSING
-	ClOpcodeDesc({"HALT", 0}),
-	ClOpcodeDesc({"POP", 0}),
-	ClOpcodeDesc({"MAKE_INT", 1}),
-	ClOpcodeDesc({"MAKE_CONS", 0}),
-	ClOpcodeDesc({"MAKE_RECORD", 2}),
-	ClOpcodeDesc({"MAKE_MAP", 0}),
-	ClOpcodeDesc({"MAKE_STRING", 1}),
+	ClOpcodeDesc({"HALT",          0, false}),
+	ClOpcodeDesc({"POP",           0, false}),
+	ClOpcodeDesc({"LOAD",          1, false}),
+	ClOpcodeDesc({"STORE",         1, false}),
+	ClOpcodeDesc({"MAKE_INT",      1, false}),
+	ClOpcodeDesc({"MAKE_CONS",     0, false}),
+	ClOpcodeDesc({"MAKE_RECORD",   2, false}),
+	ClOpcodeDesc({"MAKE_MAP",      0, false}),
+	ClOpcodeDesc({"MAKE_STRING",   0, true }),
+	ClOpcodeDesc({"MAKE_FUNCTION", 0, true }),
+	ClOpcodeDesc({"APPLY",         0, false}),
+	ClOpcodeDesc({"UNARY_OP",      1, false}),
+	ClOpcodeDesc({"BINARY_OP",     1, false}),
 // END-PY-PARSING
 };
 
@@ -59,9 +69,27 @@ namespace cl_template_trickery {
 // This macro guarantees compile time evaluation of the above opcode_index_by_name function.
 #define OPCODE_INDEX(name) (cl_template_trickery::useless_template<cl_template_trickery::opcode_index_by_name(name)>::value)
 
+// This is a descriptor for the MAKE_FUNCTION opcode, and thus the name should be interpreted
+// left associatively, that is, a ((make function) descriptor) not a (make (function descriptor)).
+struct ClMakeFunctionDescriptor {
+	uint32_t subscope_length;
+	std::vector<std::pair<int, int>> subscope_closure_descriptor;
+	ClInstructionSequence* executable_content;
+
+	// This method decodes the descriptor from a string, and returns the number of bytes consumed.
+	// One obvious protocol would be to pass in a string, but then we might take $O(n^2)$ time to
+	// parse bytecode when functions are nested (and thus the descriptor contains another descriptor).
+	// Thus, we instead take in a pointer to the bytecode, and a length.
+	size_t read_from(const char* data, size_t length);
+};
+
 struct ClInstruction {
 	int opcode;
 	cl_int_t args[MAX_OPCODE_ARGUMENT_COUNT] = {0};
+	std::string data_field;
+
+	// These fields are specific to MAKE_FUNCTION calls.
+	ClMakeFunctionDescriptor make_function_descriptor;
 };
 
 struct ClInstructionSequence {
@@ -74,11 +102,11 @@ std::ostream& operator << (std::ostream& os, const ClInstructionSequence& seq);
 void cl_crash(std::string message);
 
 class ClContext {
+public:
 	ClDataContext* data_ctx;
 
-public:
 	ClContext();
-	void execute(ClInstructionSequence* seq);
+	void execute(ClRecord* scope, ClInstructionSequence* seq);
 };
 
 #endif
