@@ -38,18 +38,23 @@ void ClInt::pprint(ostream& os) const {
 	os << "Int(" << value << ")";
 }
 
-// ===== ClCons =====
+// ===== ClList =====
 
-ClCons::~ClCons() {
-	head->dec_ref();
-	tail->dec_ref();
+ClList::~ClList() {
+	for (ClObj* ptr : contents)
+		ptr->dec_ref();
 }
 
-void ClCons::pprint(ostream& os) const {
-	if (tail != nullptr)
-		os << "Cons(" << head << ", " << tail << ")";
-	else
-		os << "Cons(" << head << ", nil)";
+void ClList::pprint(ostream& os) const {
+	os << "[";
+	bool flag = false;
+	for (ClObj* ptr : contents) {
+		if (flag)
+			os << ", ";
+		os << *ptr;
+		flag = true;
+	}
+	os << "]";
 }
 
 // ===== ClRecord =====

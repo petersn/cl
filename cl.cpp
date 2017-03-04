@@ -204,24 +204,10 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 				stack.push_back(obj);
 				break;
 			}
-			case OPCODE_INDEX("MAKE_CONS"): {
-				auto obj = new ClCons();
+			case OPCODE_INDEX("MAKE_LIST"): {
+				auto obj = new ClList();
 				obj->ref_count = 1;
 				data_ctx->register_object(obj);
-
-				// We don't decrement head's ref count, because it ends up in the cons cell.
-				obj->head = pop(stack);
-				ClObj* tail = pop(stack);
-				// Here we do the conversion of nils into nullptrs.
-				if (tail->kind == CL_NIL) {
-					obj->tail = nullptr;
-					// Make sure to count that this nil was popped off the stack!
-					tail->dec_ref();
-				} else if (tail->kind != CL_CONS) {
-					cl_crash("Attempt to cons onto non-cons.");
-				} else {
-					obj->tail = static_cast<ClCons*>(tail);
-				}
 				stack.push_back(obj);
 				break;
 			}

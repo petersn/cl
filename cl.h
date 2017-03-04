@@ -38,7 +38,7 @@ constexpr ClOpcodeDesc cl_opcode_descs[] = {
 	ClOpcodeDesc({"STORE",         1, -1, false}),
 	ClOpcodeDesc({"MAKE_NIL",      0,  1, false}),
 	ClOpcodeDesc({"MAKE_INT",      1,  1, false}),
-	ClOpcodeDesc({"MAKE_CONS",     0, -1, false}),
+	ClOpcodeDesc({"MAKE_LIST",     0,  1, false}),
 	ClOpcodeDesc({"MAKE_RECORD",   2,  1, false}),
 	ClOpcodeDesc({"MAKE_MAP",      0,  1, false}),
 	ClOpcodeDesc({"MAKE_STRING",   0,  1, true }),

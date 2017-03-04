@@ -3,12 +3,13 @@
 #ifndef _CL_STRUCTURES_H
 #define _CL_STRUCTURES_H
 
-#include <iostream>
-#include <ostream>
-#include <unordered_set>
-#include <map>
-#include <string>
 #include <stdint.h>
+#include <ostream>
+#include <iostream>
+#include <unordered_set>
+#include <vector>
+#include <string>
+#include <map>
 
 // Forward declarations for the cyclic include of cl.h.
 class ClObj;
@@ -21,7 +22,7 @@ typedef int64_t cl_int_t;
 enum ClKind {
 	CL_NIL,
 	CL_INT,
-	CL_CONS,
+	CL_LIST,
 	CL_RECORD,
 	CL_MAP,
 	CL_STRING,
@@ -58,12 +59,11 @@ struct ClInt : public ClObj {
 	virtual void pprint(std::ostream& os) const;
 };
 
-struct ClCons : public ClObj {
-	ClObj* head;
-	ClCons* tail;
+struct ClList : public ClObj {
+	std::vector<ClObj*> contents;
 
-	ClCons() : ClObj(CL_CONS) {}
-	virtual ~ClCons();
+	ClList() : ClObj(CL_LIST) {}
+	virtual ~ClList();
 	virtual void pprint(std::ostream& os) const;
 };
 
