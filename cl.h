@@ -107,7 +107,7 @@ public:
 	ClDataContext* data_ctx;
 
 	ClContext();
-	void execute(ClRecord* scope, ClInstructionSequence* seq);
+	ClObj* execute(ClRecord* scope, ClInstructionSequence* seq);
 };
 
 #endif

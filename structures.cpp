@@ -4,7 +4,7 @@
 using namespace std;
 
 std::ostream& operator << (std::ostream& os, const ClObj& obj) {
-	os << obj;
+	obj.pprint(os);
 	return os;
 }
 
@@ -54,7 +54,7 @@ void ClCons::pprint(ostream& os) const {
 
 // ===== ClRecord =====
 
-ClRecord::ClRecord(cl_int_t distinguisher, cl_int_t length, ClObj* fill) : distinguisher(distinguisher), length(length) {
+ClRecord::ClRecord(cl_int_t distinguisher, cl_int_t length, ClObj* fill) : ClObj(CL_RECORD), distinguisher(distinguisher), length(length) {
 	contents = new ClObj*[length];
 	for (cl_int_t i = 0; i < length; i++)
 		contents[i] = fill;

@@ -11,8 +11,9 @@
 #include <stdint.h>
 
 // Forward declarations for the cyclic include of cl.h.
-class ClDataContext;
+class ClObj;
 class ClRecord;
+class ClDataContext;
 typedef int64_t cl_int_t;
 
 #include "cl.h"
@@ -31,10 +32,12 @@ enum ClKind {
 struct ClObj {
 	ClDataContext* parent;
 	int ref_count;
-	const ClKind kind = CL_INVALID;
+	ClKind kind;
 
 	void dec_ref();
 	void inc_ref();
+
+	ClObj(ClKind kind) : kind(kind) {}
 
 	virtual ~ClObj();
 	bool test_kind(ClKind kind);
@@ -44,29 +47,27 @@ struct ClObj {
 std::ostream& operator << (std::ostream& os, const ClObj& obj);
 
 struct ClNil : public ClObj {
-	const ClKind kind = CL_NIL;
-
+	ClNil() : ClObj(CL_NIL) {}
 	virtual void pprint(std::ostream& os) const;
 };
 
 struct ClInt : public ClObj {
-	const ClKind kind = CL_INT;
 	cl_int_t value;
 
+	ClInt() : ClObj(CL_INT) {}
 	virtual void pprint(std::ostream& os) const;
 };
 
 struct ClCons : public ClObj {
-	const ClKind kind = CL_CONS;
 	ClObj* head;
 	ClCons* tail;
 
+	ClCons() : ClObj(CL_CONS) {}
 	virtual ~ClCons();
 	virtual void pprint(std::ostream& os) const;
 };
 
 struct ClRecord : public ClObj {
-	const ClKind kind = CL_RECORD;
 	// XXX: TODO: Make a decision as to what type to use for these. Probably just plain int?
 	cl_int_t distinguisher;
 	cl_int_t length;
@@ -83,28 +84,27 @@ struct ClRecord : public ClObj {
 };
 
 struct ClMap : public ClObj {
-	const ClKind kind = CL_MAP;
 	std::map<cl_int_t, ClObj*> mapping;
 
+	ClMap() : ClObj(CL_MAP) {}
 	virtual ~ClMap();
 	virtual void pprint(std::ostream& os) const;
 };
 
 struct ClString : public ClObj {
-	const ClKind kind = CL_STRING;
 	std::string contents;
 
+	ClString() : ClObj(CL_STRING) {}
 	virtual void pprint(std::ostream& os) const;
 };
 
 struct ClFunction : public ClObj {
-	const ClKind kind = CL_FUNCTION;
-
 	// Every function consists of an executable content...
 	ClInstructionSequence* executable_content;
 	// ... and a record for the local closure.
 	ClRecord* closure;
 
+	ClFunction() : ClObj(CL_FUNCTION) {}
 	virtual void pprint(std::ostream& os) const;
 };
 

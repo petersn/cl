@@ -151,15 +151,13 @@ static ClObj* pop(vector<ClObj*>& stack) {
 	return obj;
 }
 
-void ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
+ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 	cout << "=== exec ===" << endl;
 
 	// Main interpreter.
 	vector<ClObj*> stack;
 	int instruction_pointer = 0;
-	while (1) {
-		if (instruction_pointer < 0 or instruction_pointer >= seq->instructions.size())
-			cl_crash("Walked off end of program.");
+	while (instruction_pointer < seq->instructions.size()) {
 		ClInstruction& instruction = seq->instructions[instruction_pointer];
 		instruction_pointer++;
 
@@ -255,8 +253,12 @@ void ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 				// We will decrement the ref count on this function, but only once we're done evaluating everything.
 				ClObj* possibly_function_obj = pop(stack);
 				// Type check the object.
-				if (possibly_function_obj->kind != CL_FUNCTION)
+				if (possibly_function_obj->kind != CL_FUNCTION) {
+					cout << "Trying to call this: (" << *possibly_function_obj << " " << *function_argument << ")" << endl;
+					cout << "KIND: " << possibly_function_obj->kind << endl;
+					cout << "KIND: " << function_argument->kind << endl;
 					cl_crash("Attempted to call non-function.");
+				}
 				ClFunction* function_obj = static_cast<ClFunction*>(possibly_function_obj);
 				// We duplicate the function closure to get a scope to execute in.
 				// Note that we neither register nor set the ref count on this record, because we're about to throw it away.
@@ -264,11 +266,14 @@ void ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 				// We set the magic value 0 in the child_scope to be the passed in argument.
 				child_scope->store(0, function_argument);
 				// Do execution!
-				execute(child_scope, function_obj->executable_content);
+				ClObj* return_value = execute(child_scope, function_obj->executable_content);
 				// By deleting the child scope we effectively decrement the ref count on function_argument, completing our obligation.
 				delete child_scope;
 				// Now that execution of the call is over, it is safe to decerement the ref count on function_obj.
 				function_obj->dec_ref();
+				// We push the return value onto our stack and do NOT increment the reference count, because
+				// the reference count was never decremented when the object was popped off the callee's stack.
+				stack.push_back(return_value);
 				break;
 			}
 			case OPCODE_INDEX("UNARY_OP"): {
@@ -281,6 +286,16 @@ void ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 				cl_crash("BUG BUG BUG: Unhandled opcode in execute.");
 		}
 	}
+
+	// Return the top of stack, by convention, or nil if the stack is empty.
+	ClObj* top_of_stack = stack.size() == 0 ? data_ctx->nil : pop(stack);
+	// Decrement references to all the remaining objects in the stack, as our stack is about to be reaped.
+	for (auto& p : stack)
+		p->dec_ref();
+	// Return the top-of-stack value.
+	// The caller shouldn't increment the reference on this object when it inserts it somewhere, because
+	// its ref count is already one high from the fact that we exempted it from the above decrementation.
+	return top_of_stack;
 }
 
 string slurp_stream(ifstream& in) {
