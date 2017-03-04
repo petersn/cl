@@ -45,6 +45,7 @@ constexpr ClOpcodeDesc cl_opcode_descs[] = {
 	ClOpcodeDesc({"MAKE_FUNCTION", 0,  1, true }),
 	ClOpcodeDesc({"CALL",          0, -1, false}),
 	ClOpcodeDesc({"BINARY_PLUS",   0, -1, false}),
+	ClOpcodeDesc({"BINARY_TIMES",  0, -1, false}),
 	ClOpcodeDesc({"PRINT",         0, -1, false}),
 // END-PY-PARSING
 };
@@ -120,6 +121,7 @@ public:
 
 	// Operations.
 	ClObj* binary_plus(ClObj* left, ClObj* right);
+	ClObj* binary_times(ClObj* left, ClObj* right);
 };
 
 #endif

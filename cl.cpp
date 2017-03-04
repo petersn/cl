@@ -301,9 +301,18 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 				break;
 			}
 			case OPCODE_INDEX("BINARY_PLUS"): {
-				ClObj* left = pop(stack);
 				ClObj* right = pop(stack);
+				ClObj* left = pop(stack);
 				ClObj* result = binary_plus(left, right);
+				left->dec_ref();
+				right->dec_ref();
+				stack.push_back(result);
+				break;
+			}
+			case OPCODE_INDEX("BINARY_TIMES"): {
+				ClObj* right = pop(stack);
+				ClObj* left = pop(stack);
+				ClObj* result = binary_times(left, right);
 				left->dec_ref();
 				right->dec_ref();
 				stack.push_back(result);
@@ -331,17 +340,8 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 	return top_of_stack;
 }
 
-ClObj* ClContext::binary_plus(ClObj* left, ClObj* right) {
-	// Fast case for ints.
-	if (left->kind == CL_INT and right->kind == CL_INT) {
-		auto obj = new ClInt();
-		obj->value = static_cast<ClInt*>(left)->value + static_cast<ClInt*>(right)->value;
-		data_ctx->register_object(obj);
-		obj->ref_count = 1;
-		return obj;
-	}
-	cl_crash("Adding invalid objects.");
-}
+// Include the various operations and functions.
+#include "operations.cpp"
 
 string slurp_stream(ifstream& in) {
 	stringstream sstr;
