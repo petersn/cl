@@ -1,0 +1,8 @@
+// Context free grammar for Cl.
+// See parse.py for more details.
+
+variable ::= identifier::
+expr ::= variable | lambda
+lambda ::= "\" identifier:: "->" expr
+statement ::= expr | assignment
+

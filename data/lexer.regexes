@@ -1,0 +1,16 @@
+// Lexer for Cl.
+// See parse.py for more details.
+
+escaped_newline~ = \\\n
+comment~         = #.*
+keyword          = def|if|else|while|\\|->
+open_paren       = [(]
+close_paren      = [)]
+operator         = [+]|-|[*]|/
+float            = [1-9]?[0-9]*[.][0-9]*
+integer          = [0-9]+
+string           = "(\\.|[^"\\])*"
+identifier       = [a-zA-Z_][a-zA-Z0-9_]*
+newline          = \n
+whitespace~      = [ ]+|\t+
+

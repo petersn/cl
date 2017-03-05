@@ -231,7 +231,6 @@ class BNFParser:
 
 		self.grammar = ContextFreeGrammar(self.productions)
 
-		__import__("pprint").pprint(self.productions)
 		self.__call__ = self.grammar.__call__
 
 class Lexer:
@@ -265,7 +264,8 @@ class Lexer:
 
 	__call__ = lex			
 
-if __name__ == "__main__":
+#if __name__ == "__main__":
+if False:
 	import pprint
 
 	lex = Lexer("""
@@ -292,5 +292,18 @@ expr ::= literal | parens | operation
 	assert remaining == "", "Failed to completely lex."
 
 	for derivation in parser("expr", tokens):
+		pprint.pprint(derivation)
+
+if __name__ == "__main__":
+	import pprint
+	lex = Lexer(open("data/lexer.regexes").read())
+	parser = BNFParser(open("data/grammar.bnf").read())
+	tokens, remaining = lex(r"""\
+# A simple comment.
+\x -> x \
+""")
+	print tokens, repr(remaining)
+	assert remaining == ""
+	for derivation in parser("statement", tokens):
 		pprint.pprint(derivation)
 
