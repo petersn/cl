@@ -22,6 +22,7 @@ typedef int64_t cl_int_t;
 enum ClKind {
 	CL_NIL,
 	CL_INT,
+	CL_BOOL,
 	CL_LIST,
 	CL_RECORD,
 	CL_MAP,
@@ -38,7 +39,7 @@ struct ClObj {
 	void dec_ref();
 	void inc_ref();
 
-	ClObj(ClKind kind) : kind(kind) {}
+	ClObj(ClKind kind) : ref_count(1), kind(kind) {}
 
 	virtual ~ClObj();
 	bool test_kind(ClKind kind);
@@ -56,6 +57,13 @@ struct ClInt : public ClObj {
 	cl_int_t value;
 
 	ClInt() : ClObj(CL_INT) {}
+	virtual void pprint(std::ostream& os) const;
+};
+
+struct ClBool : public ClObj {
+	bool truth_value;
+
+	ClBool() : ClObj(CL_BOOL) {}
 	virtual void pprint(std::ostream& os) const;
 };
 
@@ -104,6 +112,7 @@ struct ClFunction : public ClObj {
 	// ... and a record for the local closure.
 	ClRecord* closure;
 
+	virtual ~ClFunction();
 	ClFunction() : ClObj(CL_FUNCTION) {}
 	virtual void pprint(std::ostream& os) const;
 };
@@ -111,10 +120,26 @@ struct ClFunction : public ClObj {
 struct ClDataContext {
 	std::unordered_set<ClObj*> objects;
 	ClNil* nil;
+	ClBool* static_booleans[2];
 
 	ClDataContext();
 	ClObj* register_object(ClObj* obj);
 };
+
+namespace cl_template_trickery {
+	// Here we use a specialized template to allow users to look up the corresponding ClKind to a given ClObj subclass.
+	template <typename T> struct get_kind {};
+
+	template <> struct get_kind<ClObj>      { constexpr static ClKind kind = CL_INVALID; };
+	template <> struct get_kind<ClNil>      { constexpr static ClKind kind = CL_NIL; };
+	template <> struct get_kind<ClInt>      { constexpr static ClKind kind = CL_INT; };
+	template <> struct get_kind<ClBool>     { constexpr static ClKind kind = CL_BOOL; };
+	template <> struct get_kind<ClList>     { constexpr static ClKind kind = CL_LIST; };
+	template <> struct get_kind<ClRecord>   { constexpr static ClKind kind = CL_RECORD; };
+	template <> struct get_kind<ClMap>      { constexpr static ClKind kind = CL_MAP; };
+	template <> struct get_kind<ClString>   { constexpr static ClKind kind = CL_STRING; };
+	template <> struct get_kind<ClFunction> { constexpr static ClKind kind = CL_FUNCTION; };
+}
 
 #endif
 

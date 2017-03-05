@@ -172,6 +172,11 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 				break;
 			}
 			case OPCODE_INDEX("NOP"): {
+				cout << "Uncollected objects:" << endl;
+				for (ClObj* obj : data_ctx->objects) {
+					cout << "    [" << obj->ref_count << "]  " << *obj << endl;
+				}
+				cout << endl;
 				break;
 			}
 			case OPCODE_INDEX("POP"): {
@@ -286,24 +291,24 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 				stack.push_back(return_value);
 				break;
 			}
-			case OPCODE_INDEX("BINARY_PLUS"): {
-				ClObj* right = pop(stack);
-				ClObj* left = pop(stack);
-				ClObj* result = binary_plus(left, right);
-				left->dec_ref();
-				right->dec_ref();
-				stack.push_back(result);
-				break;
+#define BINARY_OPERATION(name, func) \
+			case OPCODE_INDEX(name): { \
+				ClObj* right = pop(stack); \
+				ClObj* left = pop(stack); \
+				ClObj* result = func(left, right); \
+				left->dec_ref(); \
+				right->dec_ref(); \
+				stack.push_back(result); \
+				break; \
 			}
-			case OPCODE_INDEX("BINARY_TIMES"): {
-				ClObj* right = pop(stack);
-				ClObj* left = pop(stack);
-				ClObj* result = binary_times(left, right);
-				left->dec_ref();
-				right->dec_ref();
-				stack.push_back(result);
-				break;
-			}
+			BINARY_OPERATION("BINARY_PLUS", binary_plus)
+			BINARY_OPERATION("BINARY_MINUS", binary_minus)
+			BINARY_OPERATION("BINARY_TIMES", binary_times)
+			BINARY_OPERATION("BINARY_DIVIDE", binary_divide)
+			BINARY_OPERATION("BINARY_MODULO", binary_modulo)
+			BINARY_OPERATION("BINARY_INDEX", binary_index)
+			BINARY_OPERATION("BINARY_IN", binary_in)
+//			BINARY_OPERATION("BINARY_COMPARE", binary_compare)
 			case OPCODE_INDEX("PRINT"): {
 				ClObj* obj = pop(stack);
 				cout << " ---> Printing: " << *obj << endl;
@@ -352,5 +357,13 @@ int main(int argc, char** argv) {
 	auto ctx = new ClContext();
 	auto root_scope = new ClRecord(0, 0, ctx->data_ctx->nil);
 	ctx->execute(root_scope, program);
+
+	// Check for leaked objects.
+	if (ctx->data_ctx->objects.size() > 0) {
+		cout << "WARNING: Leaked objects:" << endl;
+		for (ClObj* obj : ctx->data_ctx->objects) {
+			cout << "    " << *obj << endl;
+		}
+	}
 }
 

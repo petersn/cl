@@ -31,22 +31,33 @@ constexpr ClOpcodeDesc cl_opcode_descs[] = {
 // These tags facilitate that parsing.
 // WARNING: Commenting out an opcode won't stop the Python assembler from thinking it's real!
 // BEGIN-PY-PARSING
-	ClOpcodeDesc({"HALT",          0,  0, false}),
-	ClOpcodeDesc({"NOP",           0,  0, false}),
-	ClOpcodeDesc({"POP",           0, -1, false}),
-	ClOpcodeDesc({"LOAD",          1,  1, false}),
-	ClOpcodeDesc({"STORE",         1, -1, false}),
-	ClOpcodeDesc({"MAKE_NIL",      0,  1, false}),
-	ClOpcodeDesc({"MAKE_INT",      1,  1, false}),
-	ClOpcodeDesc({"MAKE_LIST",     0,  1, false}),
-	ClOpcodeDesc({"MAKE_RECORD",   2,  1, false}),
-	ClOpcodeDesc({"MAKE_MAP",      0,  1, false}),
-	ClOpcodeDesc({"MAKE_STRING",   0,  1, true }),
-	ClOpcodeDesc({"MAKE_FUNCTION", 0,  1, true }),
-	ClOpcodeDesc({"CALL",          0, -1, false}),
-	ClOpcodeDesc({"BINARY_PLUS",   0, -1, false}),
-	ClOpcodeDesc({"BINARY_TIMES",  0, -1, false}),
-	ClOpcodeDesc({"PRINT",         0, -1, false}),
+	ClOpcodeDesc({"HALT",           0,  0, false}),
+	ClOpcodeDesc({"NOP",            0,  0, false}),
+	ClOpcodeDesc({"POP",            0, -1, false}),
+	ClOpcodeDesc({"LOAD",           1,  1, false}),
+	ClOpcodeDesc({"STORE",          1, -1, false}),
+	ClOpcodeDesc({"MAKE_NIL",       0,  1, false}),
+	ClOpcodeDesc({"MAKE_INT",       1,  1, false}),
+	ClOpcodeDesc({"MAKE_LIST",      0,  1, false}),
+	ClOpcodeDesc({"MAKE_RECORD",    2,  1, false}),
+	ClOpcodeDesc({"MAKE_MAP",       0,  1, false}),
+	ClOpcodeDesc({"MAKE_STRING",    0,  1, true }),
+	ClOpcodeDesc({"MAKE_FUNCTION",  0,  1, true }),
+	ClOpcodeDesc({"CALL",           0, -1, false}),
+	ClOpcodeDesc({"LIST_APPEND",    0, -1, false}),
+	ClOpcodeDesc({"BINARY_PLUS",    0, -1, false}),
+	ClOpcodeDesc({"BINARY_MINUS",   0, -1, false}),
+	ClOpcodeDesc({"BINARY_TIMES",   0, -1, false}),
+	ClOpcodeDesc({"BINARY_DIVIDE",  0, -1, false}),
+	ClOpcodeDesc({"BINARY_MODULO",  0, -1, false}),
+	ClOpcodeDesc({"BINARY_INDEX",   0, -1, false}),
+	ClOpcodeDesc({"BINARY_IN",      0, -1, false}),
+	ClOpcodeDesc({"BINARY_COMPARE", 0, -1, false}),
+	ClOpcodeDesc({"STORE_INDEX",    0, -2, false}),
+	ClOpcodeDesc({"JUMP",           1,  0, false}),
+	ClOpcodeDesc({"JUMP_IF_TRUTHY", 1, -1, false}),
+	ClOpcodeDesc({"JUMP_IF_FALSEY", 1, -1, false}),
+	ClOpcodeDesc({"PRINT",          0, -1, false}),
 // END-PY-PARSING
 };
 
@@ -121,7 +132,13 @@ public:
 
 	// Operations.
 	ClObj* binary_plus(ClObj* left, ClObj* right);
+	ClObj* binary_minus(ClObj* left, ClObj* right);
 	ClObj* binary_times(ClObj* left, ClObj* right);
+	ClObj* binary_divide(ClObj* left, ClObj* right);
+	ClObj* binary_modulo(ClObj* left, ClObj* right);
+	ClObj* binary_index(ClObj* left, ClObj* right);
+	ClObj* binary_in(ClObj* left, ClObj* right);
+	ClObj* binary_compare(ClObj* left, ClObj* right, cl_int_t comparison_type);
 };
 
 #endif

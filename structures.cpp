@@ -5,6 +5,7 @@ using namespace std;
 
 std::ostream& operator << (std::ostream& os, const ClObj& obj) {
 	obj.pprint(os);
+	os << "@" << obj.ref_count;
 	return os;
 }
 
@@ -12,10 +13,15 @@ std::ostream& operator << (std::ostream& os, const ClObj& obj) {
 
 void ClObj::dec_ref() {
 	ref_count--;
+	if (ref_count <= 0) {
+//		cout << "          (Collecting:) " << *this << endl;
+		parent->objects.erase(this);
+		delete this;
+	}
 }
 
 void ClObj::inc_ref() {
-	ref_count--;
+	ref_count++;
 }
 
 ClObj::~ClObj() {
@@ -36,6 +42,15 @@ void ClNil::pprint(ostream& os) const {
 
 void ClInt::pprint(ostream& os) const {
 	os << "Int(" << value << ")";
+}
+
+// ===== ClBool =====
+
+void ClBool::pprint(ostream& os) const {
+	if (truth_value)
+		os << "True";
+	else
+		os << "False";
 }
 
 // ===== ClList =====
@@ -78,8 +93,9 @@ void ClRecord::pprint(ostream& os) const {
 	for (int i = 0; i < length; i++) {
 		if (i != 0)
 			os << ", ";
-		os << contents[i];
+		os << *contents[i];
 	}
+	os << "]";
 }
 
 ClObj* ClRecord::load(int index) const {
@@ -124,8 +140,15 @@ void ClString::pprint(ostream& os) const {
 
 // ===== ClFunction =====
 
+ClFunction::~ClFunction() {
+	// We need to not delete executable_context, because it is owned by the bytecode compiler, and can be shared with other ClFunctions.
+	// However, our closure should have its reference decremented.
+	closure->dec_ref();
+	// In the current implementation this should ALWAYS cause the closure to be collected, but maybe later it'll be possible to extract this ClRecord?
+}
+
 void ClFunction::pprint(ostream& os) const {
-	os << "Function";
+	os << "Function_" << executable_content->instructions.size();
 }
 
 // ===== ClDataContext =====
@@ -133,7 +156,11 @@ void ClFunction::pprint(ostream& os) const {
 ClDataContext::ClDataContext() {
 	// Statically allocate a nil object.
 	nil = new ClNil();
-	// We explicitly do NOT register our nil, so it won't get garbage collected.
+	static_booleans[0] = new ClBool();
+	static_booleans[0]->truth_value = false;
+	static_booleans[1] = new ClBool();
+	static_booleans[1]->truth_value = true;
+	// We explicitly do NOT register the above, so they won't get garbage collected.
 }
 
 ClObj* ClDataContext::register_object(ClObj* obj) {
