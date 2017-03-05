@@ -22,12 +22,22 @@ class SyntaxElement:
 	def takes_block(self):
 		return self.kind in self.syntax_element_takes_block
 
+	@staticmethod
+	def pprint_ast(ast, indentation=0):
+		if isinstance(ast[1], list):
+			print " "*indentation + ast[0]
+			for obj in ast[1]:
+				SyntaxElement.pprint_ast(obj, indentation+2)
+		else:
+			print " "*indentation + ast[0], ast[1]
+
 	def pprint(self, indentation=0):
-		print " " * indentation, "Type:", self.kind
-		pprint.pprint(self.ast)
+		SyntaxElement.pprint_ast(self.ast, indentation=indentation)
 		if self.block != None:
+			print " "*indentation + "{"
 			for obj in self.block:
 				obj.pprint(indentation+4)
+			print " "*indentation + "}"
 
 class ClParser:
 	def __init__(self):
@@ -90,9 +100,10 @@ class ClParser:
 			assert len(main_element) == 2
 			main_element_kind = main_element[0]
 			# Build a wrapped SyntaxElement object...
-			se = SyntaxElement(main_element_kind, main_element[1])
+			se = SyntaxElement(main_element_kind, main_element)
 			# ... and insert it at the appropriate place in the tree.
-			stack[-1].append(se)
+			if se.kind != "end":
+				stack[-1].append(se)
 
 			# If the syntax element wants a block, then we complexify our tree.
 			if se.takes_block():
@@ -120,6 +131,9 @@ if __name__ == "__main__":
 
 # Huzzah for Cl!
 x
+def foo()
+	y	
+end
 
 """)
 	for obj in o:
