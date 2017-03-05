@@ -1,8 +1,10 @@
 // Context free grammar for Cl.
 // See parse.py for more details.
 
+function_definition ::= "def" identifier "(" argument_specifier ")"
 variable ::= identifier::
-expr ::= variable | lambda
 lambda ::= "\" identifier:: "->" expr
-statement ::= expr | assignment
+expr ::= variable | lambda
+
+syntax_element ::= expr | function_definition
 
