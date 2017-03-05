@@ -2,11 +2,17 @@
 // See parse.py for more details.
 
 argument_specifier ::=
-function_definition ::= "def" identifier:: "(" argument_specifier ")"
 variable ::= identifier::
 lambda ::= "\" identifier:: "->" expr
+
 expr ::= variable | lambda
+
+function_definition ::= "def" identifier:: "(" argument_specifier ")"
 end ::= "end"
 
-syntax_element ::= expr | function_definition | end
+// Here are the various forms of a syntax element:
+syntax_element ::= expr
+syntax_element ::= assignment
+syntax_element ::= function_definition
+syntax_element ::= end
 
