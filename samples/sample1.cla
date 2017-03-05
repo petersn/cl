@@ -1,0 +1,60 @@
+# This is some example Cl assembly.
+MAKE_FUNCTION 10 {
+	# First we define a function that adds two.
+	MAKE_FUNCTION 1 {
+		MAKE_INT 2
+		LOAD 0
+		BINARY_PLUS
+	}
+	# ... and store it in slot 1.
+	STORE 1
+
+	# Now we use said function.
+	LOAD 1
+	MAKE_INT 10
+	CALL
+
+	# This should print 12.
+	PRINT
+
+	# Now we make a factory that makes functions that add some amount.
+	MAKE_FUNCTION 1 {
+		MAKE_FUNCTION 2 0->1 {
+			LOAD 0
+			LOAD 1
+			BINARY_PLUS
+		}
+	}
+	STORE 2
+
+	# Let's use our factory to build a (+8) function.
+	LOAD 2
+	MAKE_INT 8
+	CALL
+	# ... and store it in slot 3.
+	STORE 3
+
+	# Let's load up this function and call it on 10.
+	LOAD 3
+	MAKE_INT 10
+	CALL
+
+	# This should print 18.
+	PRINT
+
+	MAKE_STRING "Hello, "
+	MAKE_STRING "world"
+	BINARY_PLUS
+	MAKE_STRING "!"
+	MAKE_INT 10
+	BINARY_TIMES
+	BINARY_PLUS
+	PRINT
+}
+MAKE_NIL
+CALL
+
+MAKE_STRING "\n\n\n"
+PRINT
+NOP
+
