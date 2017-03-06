@@ -32,6 +32,7 @@ class SyntaxElement:
 			print " "*indentation + ast[0], ast[1]
 
 	def pprint(self, indentation=0):
+		print " "*indentation + "SYNTAX ELEM:",
 		SyntaxElement.pprint_ast(self.ast, indentation=indentation)
 		if self.block != None:
 			print " "*indentation + "{"
@@ -125,17 +126,47 @@ class ClParser:
 
 		return output
 
+class ClCompiler:
+	def __init__(self):
+		pass
+
+	def compute_free_variables(self, ast):
+		free = set()
+		# For lists, union over entries.
+		if isinstance(ast, list):
+			for entry in ast:
+				free |= self.compute_free_variables(entry)
+			return free
+		# Otherwise, handle by cases.
+#		if ast.kind in ["expr"]:
+#			for entry in ast.ast
+
+		free = set()
+		for obj in ast:
+			obj.pprint()
+
+	def generate_bytecode(self, ast):
+		for obj in ast: obj.pprint()
+#		global_vars = self.compute_free_variables(ast)
+
 if __name__ == "__main__":
 	parser = ClParser()
-	o = parser.parse("""
+	ast = parser.parse("""
 
 # Huzzah for Cl!
 x
 def foo()
-	y	
+	y
+	def bar()
+		z
+	end
 end
 
 """)
-	for obj in o:
-		obj.pprint()
+	compiler = ClCompiler()
+	bytecode = compiler.generate_bytecode(ast)
+	print bytecode
+
+#	for obj in o:
+#		obj.pprint()
 
