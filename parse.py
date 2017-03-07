@@ -441,43 +441,16 @@ class Lexer:
 
 	__call__ = lex			
 
-#if __name__ == "__main__":
-if False:
-	import pprint
-
-	lex = Lexer("""
-// Simple lexer.
-open_paren    = [(]
-close_paren   = [)]
-operator      = [+]|[*]|-|/
-float         = [1-9]?[0-9]*[.][0-9]*
-integer       = [0-9]+
-// Recall that the ~ after whitespace makes it be dropped from output.
-whitespace~   = [ ]+|\\t+|\\n+
-""")
-
-	parser = BNFParser("""
-// Simple parser.
-literal ::= integer::~ | float::
-parens ::= "(" expr ")"
-operation ::= expr operator:: expr
-expr ::= literal | parens | operation
-""")
-
-	tokens, remaining = lex("(3.2+1) / ((2.7))")
-	print tokens, repr(remaining)
-	assert remaining == "", "Failed to completely lex."
-
-	for derivation in parser("expr", tokens):
-		pprint.pprint(derivation)
-
-if __name__ == "__main__" and False:
+if __name__ == "__main__":
 	import pprint
 	lex = Lexer(open("data/lexer.regexes").read())
 	parser = BNFParser(open("data/grammar.bnf").read())
-	tokens, remaining = lex(r"""\
-\x -> x \
+	tokens, remaining = lex(r"""
+\x -> x
 """)
+	# For temporary testing purposes, we strip out newline tokens, so we
+	# can test our parser as though we're matching a single syntax element.
+	tokens = [tok for tok in tokens if tok[0] != "newline"]
 	print tokens, repr(remaining)
 	assert remaining == ""
 	for derivation in parser("syntax_element", tokens):
