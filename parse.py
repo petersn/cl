@@ -398,7 +398,7 @@ class BNFParser:
 
 	def parse(self, root_non_terminal, tokens):
 		for derivation in self.grammar(root_non_terminal, tokens):
-			return self.dechomskyify(derivation)
+			yield self.dechomskyify(derivation)
 
 	__call__ = parse
 
