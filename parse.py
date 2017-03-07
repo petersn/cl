@@ -2,46 +2,25 @@
 
 import collections, re
 
+class Production:
+	def __init__(self, lhs, rhs, flags=None):
+		self.lhs, self.rhs, self.flags = lhs, rhs, flags
+
 class ContextFreeGrammar:
 	def __init__(self, productions):
-		self.productions = []
+		self.productions = productions
+		# === STEP 0
+		# Guarantee that we were fed in something in Chomsky normal form.
+		assert all(isinstance(prod, Production) for prod in self.productions)
 
 		# === STEP 1
-		# The first thing we do is regularlize the productions into a variant of Chomsky normal form.
-		# This allows Cocke-Younger-Kasami to be implemented efficiently.
-		index = [0]
-		def new_nonterminal():
-			index[0] += 1
-			return "_chain_%i" % index[0]
-
-		for lhs, rhs in productions:
-			# First, automagically convert tuples to lists.
-			if isinstance(rhs, tuple):
-				rhs = list(rhs)
-			# If the production is to zero or more non-terminals, then make sure it isn't to more than two.
-			if isinstance(rhs, list) and len(rhs) > 2:
-				symbol = rhs[-1]
-				for i in range(len(rhs)-1)[::-1]:
-					# TODO: Cache these values?
-					# If we've seen (rhs[i], symbol) before we don't need to generate a new non-terminal.
-					new_symbol = new_nonterminal() if i > 0 else lhs 
-					self.productions.append((new_symbol, [rhs[i], symbol]))
-					symbol = new_symbol
-			elif isinstance(rhs, str):
-				# We replace strings with the point function that matches just that string.
-				# Note the second lambda (and immediate call) to generate a scope so the closure of rhs works properly.
-				self.productions.append((lhs, (lambda rhs: lambda s: s == rhs)(rhs)))
-			else:
-				self.productions.append((lhs, rhs))
-
-		# === STEP 2
 		# Now that our grammar is in (a weak variant of) Chomsky normal form, we categorize the productions.
 
 		# The set of all non-terminal strings. (That is, all the LHSs of productions.)
-		self.non_terminals = set(prod[0] for prod in self.productions)
+		self.non_terminals = set(prod.lhs for prod in self.productions)
 
 		# The set of non-terminals that have an epsilon-production.
-		self.epsilons = set() 
+		self.epsilons = []
 
 		# self.conversions[non_terminal] -> list of right-hand-sides of unary (conversion) productions to other non-terminals that the non-terminal could make.
 		# That is, self.conversions[t1] -> [t2, t3, t4, ...] with t1, t2, etc as various non-terminal strings.
@@ -54,38 +33,20 @@ class ContextFreeGrammar:
 		# self.terminations[non_terminal] -> list of right-hand-sides of unary productions to terminals(!) that the non-terminal could make
 		self.terminations = collections.defaultdict(list)
 
-		for lhs, rhs in self.productions:
+		for production in self.productions:
+			lhs, rhs = production.lhs, production.rhs
+			# Be generous in what we accept -- implicitly cast tuples to lists here.
+			if isinstance(rhs, tuple):
+				rhs = list(rhs)
 			if isinstance(rhs, list):
 				if len(rhs) == 0:
-					self.epsilons.add(lhs)
+					self.epsilons.append(production)
 				elif len(rhs) == 1:
-					self.conversions[lhs].append(rhs[0])
+					self.conversions[lhs].append(production)
 				elif len(rhs) == 2:
-					self.binary_productions[lhs].append(rhs)
+					self.binary_productions[lhs].append(production)
 			else:
-				self.terminations[lhs].append(rhs)
-
-	def dechomskyify(self, derivation):
-		# Because for CYK we must convert our grammar to Chomsky Normal Form our derivations
-		# look really ugly, and in particular, don't match the input form we were given.
-		# To fix this, we flatten nodes in the derivation tree that begin with "_chain_" or are terminal applications.
-		output = []
-		stack = [output]
-		def helper(node):
-			# If node[1] is a list, then we've found a terminal application.
-			if isinstance(node[1], list):
-				stack[-1].extend(node[1])
-			elif node[0].startswith("_chain_"):
-				assert len(node) == 3
-				map(helper, node[1:])
-			else:
-				new_entry = (node[0], [])
-				stack[-1].append(new_entry)
-				stack.append(new_entry[-1])
-				map(helper, node[1:])
-				stack.pop()
-		helper(derivation)
-		return output[0]
+				self.terminations[lhs].append(production)
 
 	def parse(self, non_terminal, tokens):
 		# Here we use a (slight generalization) of Cocke-Younger-Kasami to parse in $O(n^3)$ time.
@@ -93,33 +54,34 @@ class ContextFreeGrammar:
 		cache = collections.defaultdict(list)
 		# Pre-populate the cache with all leaves that match individual terminals.
 		for i, token in enumerate(tokens):
-			for lhs, rhses in self.terminations.iteritems():
-				for rhs in rhses:
+			for name, productions in self.terminations.iteritems():
+				for production in productions:
+					lhs, rhs = production.lhs, production.rhs
 					if rhs(token):
-						cache[(lhs, i, 1)].append(("toks", lhs, [token]))
+						cache[(lhs, i, 1)].append(("toks", production, [token]))
 		# Pre-populate each epsilon production.
 		for i in xrange(len(tokens)+1):
-			for epsilon in self.epsilons:
-				cache[(epsilon, i, 0)].append(("toks", lhs, []))
+			for production in self.epsilons:
+				cache[(production.lhs, i, 0)].append(("toks", production, []))
 
 		def parse_helper(non_terminal, start, span):
 			args = (non_terminal, start, span)
 			if args not in cache:
 				cache[args] = result = []
 				# Try conversions.
-				for new_non_terminal in self.conversions[non_terminal]:
-					sub_result = parse_helper(new_non_terminal, start, span)
+				for production in self.conversions[non_terminal]:
+					sub_result = parse_helper(production.rhs[0], start, span)
 					if sub_result:
-						result.append(("->1", non_terminal, sub_result))
+						result.append(("->1", production, sub_result))
 				# Try matching each production.
-				for rhs in self.binary_productions[non_terminal]:
+				for production in self.binary_productions[non_terminal]:
 					for split_point in xrange(span+1):
-						a = parse_helper(rhs[0], start, split_point)
+						a = parse_helper(production.rhs[0], start, split_point)
 						# If here to early-out.
 						if a:
-							b = parse_helper(rhs[1], start + split_point, span - split_point)
+							b = parse_helper(production.rhs[1], start + split_point, span - split_point)
 							if b:
-								result.append(("->2", non_terminal, a, b))
+								result.append(("->2", production, a, b))
 			return cache[args]
 
 		combinatorial_representation = parse_helper(non_terminal, 0, len(tokens))
@@ -130,25 +92,38 @@ class ContextFreeGrammar:
 		# However, such an enumeration could be produced by a slightly more complicated expand function.
 		def expand(node):
 			for option in node:
-				option_kind, non_terminal = option[:2]
+				option_kind, production = option[:2]
 				if option_kind == "toks":
-					yield (non_terminal, option[2])
+					yield (production, option[2])
 				elif option_kind == "->1":
 					for sub_option in expand(option[2]):
-						yield (non_terminal, sub_option)
+						yield (production, sub_option)
 				elif option_kind == "->2":
 					for sub_option1 in expand(option[2]):
 						for sub_option2 in expand(option[3]):
-							yield (non_terminal, sub_option1, sub_option2)
+							yield (production, sub_option1, sub_option2)
 
 		for derivation in expand(combinatorial_representation):
-			yield self.dechomskyify(derivation)
+			yield derivation
+#			yield self.dechomskyify(derivation)
 
 	__call__ = parse
 
 class BNFParser:
+
+	# A BNF node stores a non-terminal, and some associated data, and is an object that appears on the RHS of a production.
+	# The purpose is to allow non-terminals to be marked up with renaming, dropping, and flattening rules.
+	class BNFNode:
+		def __init__(self, non_terminal, flags):
+			self.non_terminal, self.flags = non_terminal, flags
+
 	def __init__(self, text):
 		self.productions = []
+
+		temp_non_terminal_index = [0]
+		def temp_non_terminal():
+			temp_non_terminal_index[0] += 1
+			return temp_non_terminal_index[0]
 
 		# Our underlying CYK implementation in ContextFreeGrammar won't allow terminals to appear in any production
 		# other than a simple (non_terminal -> terminal) form, so we have to wrap any terminals in a non-terminal
@@ -158,23 +133,19 @@ class BNFParser:
 		#the newly generated non-terminal. If either lex_class or lex_string is None, then that field matches any
 		# value. The cache makes sure that we don't produce lots of unnecessary equivalent non-terminals for
 		# equivalent terminals.
-		terminal_wrapper_index = [0]
 		terminal_wrapper_cache = {}
 		def make_matcher(lex_class=None, lex_string=None):
 			args = (lex_class, lex_string)
 			if args not in terminal_wrapper_cache:
-				terminal_wrapper_index[0] += 1
-				wrapper_non_terminal = "_wrap_%i" % terminal_wrapper_index[0]
+				wrapper_non_terminal = temp_non_terminal()
 				# Make a single production for our new non-terminal.
 				# This non-terminal can now stand in for the desired terminal.
 				closure = lambda (_class, _string): (lex_class is None or _class == lex_class) and (lex_string is None or _string == lex_string)
-				self.productions.append((wrapper_non_terminal, closure))
+				closure.func_name = "%s::%s" % (lex_class, lex_string)
+				self.productions.append(Production(wrapper_non_terminal, closure, {"flatten": True, "rename": None, "drops": []}))
 				# Set the cache to say that this terminal spec maps to this wrapper non-terminal.
 				terminal_wrapper_cache[args] = wrapper_non_terminal
 			return terminal_wrapper_cache[args]
-
-		self.dropped_productions = set()
-		self.flattened_prodcutions = set()
 
 		# This routine takes a specification of a "blob", and produces a non-terminal that matches it.
 		# The options are as follows:
@@ -184,17 +155,17 @@ class BNFParser:
 		#   cls::"foo" -> matches only the lex class cls, and string "foo"
 		#   anythingelse -> ... is interpreted as a non-terminal
 		# Additionally, if the blob is suffixed with ~ then it is dropped from the final parsing. ("dropped production")
-		# If the blob is suffixed with % then it isn't dropped, but what it matches is flattened into
-		# the parent's node in the derivation tree. ("flattened production")
+#X		# If the blob is suffixed with % then it isn't dropped, but what it matches is flattened into
+#X		# the parent's node in the derivation tree. ("flattened production")
 		def make_non_terminal_from_blob(blob):
-			dropped = flattened = False
+			flags = {"drop": False}
 			# First, we check for flags and eliminate them.
 			if blob.endswith("~"):
-				dropped = True
+				flags["drop"] = True
 				blob = blob[:-1]
-			if blob.endswith("%"):
-				flattened = True
-				blob = blob[:-1]
+#			if blob.endswith("%"):
+#				flags["flatten"] = True
+#				blob = blob[:-1]
 
 			# As a convenience syntax, "foo" is synonymous with ::"foo"
 			if blob.startswith('"') and blob.endswith('"'):
@@ -206,10 +177,26 @@ class BNFParser:
 				assert string_spec == "" or (string_spec.startswith('"') and string_spec.endswith('"')), "Bad string spec: %r" % (blob,)
 				class_spec = class_spec or None
 				string_spec = string_spec[1:-1] or None
-				return make_matcher(class_spec, string_spec)
+				return self.BNFNode(make_matcher(class_spec, string_spec), flags)
 			else:
 				# Otherwise, it's a non-terminal and we return it unscathed.
-				return blob
+				return self.BNFNode(blob, flags)
+
+		def build_production(lhs, rhs, prod_flags):
+			"""build_production(lhs, rhs, prod_flags) -> None
+			`prod_flags' should be {"flatten": bool}.
+			Adds a production to `productions' corresponding (lhs, rhs) by scanning the BNFNodes in rhs,
+			and adding a drop entry to prod_flags for each node with its drop flag set.
+			"""
+			# Because we mutate this, to be safe, copy it first.
+			prod_flags = prod_flags.copy()
+			prod_flags["drops"] = []
+			# We inspect the various RHS terms of the production.
+			for i, node in enumerate(rhs):
+				if node.flags["drop"]:
+					prod_flags["drops"].append(i)
+			foo = Production(lhs, [node.non_terminal for node in rhs], prod_flags)
+			self.productions.append(foo)
 
 		# We have a simple BNF-like syntax for specifying our grammar.
 		for line in text.split("\n"):
@@ -219,19 +206,100 @@ class BNFParser:
 			assert "::=" in line, "Malformed BNF line: %r" % line
 
 			# Build rules.
-			lhs, rhs = line.split("::=", 1)
-			lhs = lhs.strip()
+			overall_lhs, overall_rhs = line.split("::=", 1)
+			overall_lhs = overall_lhs.strip()
 
-			for rhs_term in [i.split() for i in rhs.split("|")]:
-				# We now convert the sequence of blobs into a non-terminals, and insert a production.
-				rhs_term = map(make_non_terminal_from_blob, rhs_term)
-				self.productions.append((lhs, rhs_term))
+			# We now extract some flags for this rule.
+			flags = {
+				"flatten": False,
+				"rename": None,
+			}
+
+			if overall_lhs.endswith("%"):
+				overall_lhs = overall_lhs[:-1]
+				flags["flatten"] = True
+			if ":" in overall_lhs:
+				overall_lhs, renaming = overall_lhs.split(":", 1)
+				flags["rename"] = renaming
+
+			for rhs_seq in [i.split() for i in overall_rhs.split("|")]:
+				# We now convert the sequence of blobs into non-terminals, and insert a production.
+				rhs_seq = map(make_non_terminal_from_blob, rhs_seq)
+
+				# Next, we put this sequence into Chomsky normal form.
+				# While we have more than one non-terminal, we repeatedly merge the last two into one.
+				while len(rhs_seq) > 1:
+					# Pop the last two off.
+					last_two = rhs_seq.pop(-2), rhs_seq.pop(-1)
+					new_non_terminal = temp_non_terminal()
+					build_production(new_non_terminal, last_two, {"flatten": True})
+					rhs_seq.append(self.BNFNode(new_non_terminal, {"drop": False}))
+
+				# NB: Epsilon productions are handled by this code path too -- rhs_seq might be [].
+				build_production(overall_lhs, rhs_seq, flags)
 
 		# TODO: Do conversion pruning (or other optimizations of the grammar) here for efficiency.
 
 		self.grammar = ContextFreeGrammar(self.productions)
 
-		self.__call__ = self.grammar.__call__
+	def dechomskyify(self, derivation):
+		# Because for CYK we must convert our grammar to Chomsky Normal Form our derivations
+		# look really ugly, and in particular, don't match the input form we were given.
+		# To fix this, we flatten nodes in the derivation tree that begin with "_chain_" or are terminal applications.
+		output = []
+		stack = [output]
+		def helper(node):
+			# The first value in every node is a production.
+			production = node[0]
+			# Check whether or not to build a new entry in our output AST.
+			# We build a node precisely when the production doesn't say to "flatten".
+			if not production.flags["flatten"]:
+				name = production.lhs
+				# If name is not None, then let it override the LHS's name as the name for this entry in the AST.
+				if production.flags["rename"] != None:
+					name = production.flags["rename"]
+				# Generate the new AST entry, and write it into the current place in the aST.
+				new_entry = (name, [])
+				stack[-1].append(new_entry)
+				# Finally, push the new_entry's list into the stack so further nodes are built into *it*.
+				stack.append(new_entry[-1])
+
+			# === Recursively build the contents of this node ===
+			# This is where drops are taken into account.
+
+			# If node[1] is a list, then we've found a terminal application or epsilon production.
+			if isinstance(node[1], list):
+				# Here we drop iff 0 is in drops, because we have only a single child.
+				if 0 not in production.flags["drops"]:
+					stack[-1].extend(node[1])
+			else:
+				for i, subnode in enumerate(node[1:]):
+					# Skip subnodes that we are told to drop from the flags.
+					if i in production.flags["drops"]:
+						continue
+					helper(subnode)
+
+			# Finally, pop the stack entry if appropriate.
+			if not production.flags["flatten"]:
+				stack.pop()
+
+#			elif node[0].startswith("_chain_"):
+#				assert len(node) == 3
+#				map(helper, node[1:])
+#			else:
+#				new_entry = (node[0], [])
+#				stack[-1].append(new_entry)
+#				stack.append(new_entry[-1])
+#				map(helper, node[1:])
+#				stack.pop()
+		helper(derivation)
+		return output[0]
+
+	def parse(self, root_non_terminal, tokens):
+		for derivation in self.grammar(root_non_terminal, tokens):
+			return self.dechomskyify(derivation)
+
+	__call__ = parse
 
 class Lexer:
 	def __init__(self, text):
@@ -265,7 +333,7 @@ class Lexer:
 	__call__ = lex			
 
 #if __name__ == "__main__":
-if False:
+if True:
 	import pprint
 
 	lex = Lexer("""
@@ -281,7 +349,7 @@ whitespace~   = [ ]+|\\t+|\\n+
 
 	parser = BNFParser("""
 // Simple parser.
-literal ::= integer:: | float::
+literal ::= integer::~ | float::
 parens ::= "(" expr ")"
 operation ::= expr operator:: expr
 expr ::= literal | parens | operation
@@ -294,16 +362,15 @@ expr ::= literal | parens | operation
 	for derivation in parser("expr", tokens):
 		pprint.pprint(derivation)
 
-if __name__ == "__main__":
+if __name__ == "__main__" and False:
 	import pprint
 	lex = Lexer(open("data/lexer.regexes").read())
 	parser = BNFParser(open("data/grammar.bnf").read())
 	tokens, remaining = lex(r"""\
-# A simple comment.
 \x -> x \
 """)
 	print tokens, repr(remaining)
 	assert remaining == ""
-	for derivation in parser("statement", tokens):
+	for derivation in parser("syntax_element", tokens):
 		pprint.pprint(derivation)
 
