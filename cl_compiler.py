@@ -164,7 +164,8 @@ class ClCompiler:
 			self.append("STORE %i" % self.variable_table.index(var))
 
 		def append(self, x):
-			self.target.append(" " * self.indent + x)
+			for part in x.split("\n"):
+				self.target.append(" " * self.indent + part)
 
 	@staticmethod
 	def flatten(l):
@@ -198,16 +199,18 @@ class ClCompiler:
 					]))
 				return set([variable_name]) | self.compute_free_variables(expr)
 			elif node_type == "function_definition":
+				# XXX: Evaluate how much I like writing these values here.
+				# They should probably be computed in SyntaxElement on construction.
 				# First we compute the free variables in the body of the function...
-				body_free = self.compute_free_variables(ast.block)
+				ast.body_free = self.compute_free_variables(ast.block)
 				# We now pull out the function name, and sequence of identifiers.
-				function_name, args_seq = Matcher.match_with(ast.ast,
+				ast.function_name, ast.args_seq = Matcher.match_with(ast.ast,
 					("function_definition", [
 						("identifier", str),
 						("ident_seq", list),
 					]))
-				args_variables = self.compute_free_variables(args_seq)
-				return set([function_name])
+				ast.args_variables = self.compute_free_variables(ast.args_seq)
+				return set([ast.function_name])
 			raise ValueError("Unhandled syntax element type: %r" % (ast.ast,))
 
 		# At this point we are guaranteed to be a tuple from the raw AST given by our parser.
@@ -247,10 +250,12 @@ class ClCompiler:
 				ctx.append("MAKE_INT %i" % int(literal_value))
 			elif literal_class == "string":
 				ctx.append("MAKE_STRING %s" % literal_value.encode("hex"))
+			elif literal_class == "identifier":
+				ctx.load(literal_value)
 			else:
-				assert False
+				raise ValueError("Unhandled expr literal type: %r" % (literal_class,))
 		else:
-			assert False
+			raise ValueError("Unhandled expr node_type type: %r" % (node_type,))
 
 		ctx.append("# EXPR: %r" % (expr,))
 
@@ -262,7 +267,10 @@ class ClCompiler:
 
 		for syntax_elem in syntax_elem_seq:
 			if syntax_elem.kind == "expr":
-				pass # XXX
+				expr, = Matcher.match_with(syntax_elem.ast, ("expr", [tuple]))
+				# Generate the value then immediately drop it.
+				self.generate_bytecode_for_expr(expr, ctx)
+				ctx.append("POP")
 			elif syntax_elem.kind == "assignment":
 				variable_name, expr = Matcher.match_with(syntax_elem.ast,
 					("assignment", [
@@ -272,7 +280,28 @@ class ClCompiler:
 				self.generate_bytecode_for_expr(expr, ctx)
 				ctx.store(variable_name)
 			elif syntax_elem.kind == "function_definition":
-				pass # XXX
+				# Generate an appropriate closure.
+				# The full inner variable table is just all the free variables used inside.
+				assert len(syntax_elem.args_seq) == 1, "For now only functions of one variable are supported."
+				argument_name, = Matcher.match_with(syntax_elem.args_seq[0], ("identifier", str))
+				inner_variable_table = list(syntax_elem.body_free - set([argument_name]))
+				# Map the function argument to be the first entry in the variable table.
+				inner_variable_table = [argument_name] + inner_variable_table
+
+				# Compute the list of variables we're closing over.
+				closure_vars = syntax_elem.body_free - syntax_elem.args_variables
+				transfer_records = [
+					(ctx.variable_table.index(var), inner_variable_table.index(var))
+					for var in closure_vars
+				]
+				transfer_records_string = "".join(" %i->%i" % pair for pair in transfer_records)
+				body = []
+				definition = ["MAKE_FUNCTION %s%s {" % (len(inner_variable_table), transfer_records_string), body, "}"]
+				inner_ctx = ClCompiler.CompilationContext(body, inner_variable_table, indent=2)
+				self.generate_bytecode_for_seq(syntax_elem.block, inner_ctx)
+				# Finally, we flatten our definition.
+				def_string = "\n".join(self.flatten(definition))
+				ctx.append(def_string)
 			else:
 				raise ValueError("Unhandled case: %r" % (syntax_elem.kind,))
 
@@ -301,11 +330,9 @@ if __name__ == "__main__":
 
 # Huzzah for Cl!
 x = 1
-def foo asdf gkk
+def f y
 	y
-	def bar
-		z
-	end
+	x
 end
 
 """)
