@@ -4,14 +4,24 @@
 escaped_newline~ = \\\n
 comment~         = #.*
 keyword          = (def|if|else|while|end)(?!['a-zA-Z_])
+op_group_logic   = (and|or)(?!['a-zA-Z_])
 reserved         = \\|->
 open_paren       = [(]
 close_paren      = [)]
-operator         = [+]|-|[*]|/
-float            = [1-9]?[0-9]*[.][0-9]*
+
+pipe             = [|]
+
+// Precedences of operators are defined in groups.
+op_group_mult    = [*]|/
+op_group_broad   = ::|[+][+]
+op_group_add     = [+]|-
+op_group_compare = <=|>=|<|>|==|!=
+
+//float            = [1-9]?[0-9]*[.][0-9]*
 integer          = [0-9]+
 string           = "(\\.|[^"\\])*"
 identifier       = [a-zA-Z_][a-zA-Z0-9_]*
 newline          = \n
 whitespace~      = [ ]+|\t+
+symbol           = .
 

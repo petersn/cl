@@ -136,12 +136,14 @@ class ContextFreeGrammar:
 			for production in self.epsilons:
 				memo[production.lhs, i, 0].append(("toks", production, []))
 
+		total_calls = [0]
 		def dynamic_programming(non_terminal, start, span):
 			"""dynamic_programming(non_terminal, start, span) -> derivations of non_terminal over tokens[start:start+span]
 
 			This method is the memoized dynamic programming call.
 			It checks if the argument triple is in the memo, and if not, populates that memo entry and returns it.
 			"""
+			total_calls[0] += 1
 			args = (non_terminal, start, span)
 			# If our arguments aren't in the memo, then do the work to populate this cell of the memo.
 			if args not in memo:
@@ -181,6 +183,8 @@ class ContextFreeGrammar:
 
 		# Populate the memo with the outermost computation of our desired non-terminal against the whole input.
 		combinatorial_representation = dynamic_programming(non_terminal, 0, len(tokens))
+
+#		print total_calls[0]
 
 		# We now have a compact combinatorial representiation of the potentially exponentially (or
 		# even infinitely) many derivations. Modulo the concerns of ISSUE1 above, this combinatorial
@@ -439,20 +443,28 @@ class Lexer:
 				break
 		return tokens, s
 
-	__call__ = lex			
+	__call__ = lex
+
+def pretty(x, indent=0):
+	if isinstance(x[1], str):
+		return " "*indent + x[1]
+#	if len(x[1]) == 1:
+#		return " "*indent + x[0] + ": " + pretty(x[1][0], indent+2)
+	return " "*indent + x[0] + "\n" + "\n".join(pretty(i, indent+2) for i in x[1])
 
 if __name__ == "__main__":
-	import pprint
+	import pprint, sys
+	sys.setrecursionlimit(4000)
 	lex = Lexer(open("data/lexer.regexes").read())
 	parser = BNFParser(open("data/grammar.bnf").read())
-	tokens, remaining = lex(r"""
-\x -> x
-""")
+	s = " ".join(sys.argv[1:])
+	tokens, remaining = lex(s)
 	# For temporary testing purposes, we strip out newline tokens, so we
 	# can test our parser as though we're matching a single syntax element.
 	tokens = [tok for tok in tokens if tok[0] != "newline"]
 	print tokens, repr(remaining)
 	assert remaining == ""
 	for derivation in parser("syntax_element", tokens):
-		pprint.pprint(derivation)
+		print pretty(derivation)
+#		pprint.pprint(derivation)
 

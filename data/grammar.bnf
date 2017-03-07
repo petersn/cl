@@ -1,14 +1,62 @@
 // Context free grammar for Cl.
 // See parse.py for more details.
 
-argument_specifier ::=
 variable ::= identifier::
-lambda ::= "\" identifier:: "->" expr
+lambda ::= "\"~ identifier:: "."~ expr
 
-expr ::= variable | lambda
+function_call ::= expr_p9 expr_p6 // expr_p8
+let_in ::= "let"~ identifier:: "="~ expr "in"~ expr
+indexing ::= expr_p9 "["~ expr "]"~
+dot_accessor ::= expr_p9 "."~ identifier::
 
-function_definition ::= "def" identifier:: "(" argument_specifier ")"
-end ::= "end"
+argument_specifier% ::= identifier:: | identifier:: argument_specifier
+ident_seq ::= | argument_specifier
+
+function_definition ::= "def"~ identifier:: ident_seq
+end ::= "end"~
+argument_specifier ::=
+
+// Define fancy expression forms.
+
+comma_separated_values% ::= expr | expr ","~ comma_separated_values
+list_literal ::= "["~ comma_separated_values "]"~ | "["~ "]"~
+ternary ::= "if"~ expr "then"~ expr "else"~ expr
+
+list_comp_group ::= identifier:: "<"~ "-"~ expr
+list_comp_groups% ::= list_comp_group | list_comp_group ","~ list_comp_groups
+list_comp ::= "["~ expr pipe::~ list_comp_groups "]"~
+
+interval ::= "["~ expr "."~ "."~ expr "]"~
+
+// Operator precedences and associativities are effectively defined here:
+// The expression syntax is defined here.
+expr_p9% ::= "("~ expr_p0 ")"~
+expr_p8% ::= expr_p9
+expr_p7% ::= expr_p8
+expr_p6% ::= expr_p7
+expr_p5% ::= expr_p6
+expr_p4% ::= expr_p5
+expr_p3% ::= expr_p4
+expr_p2% ::= expr_p3
+expr_p1% ::= expr_p2
+expr_p0% ::= expr_p1
+
+expr_p9%        ::= list_literal
+expr_p9:literal ::= identifier:: | string:: | integer::
+expr_p9%        ::= dot_accessor | indexing
+expr_p8%        ::= function_call
+expr_p7%        ::= interval | list_comp
+expr_p6:unary   ::= "-" expr_p6
+expr_p5:binary  ::= expr_p6 op_group_mult:: expr_p5
+expr_p4:binary  ::= expr_p4 op_group_add:: expr_p5
+expr_p3:binary  ::= expr_p4 op_group_broad:: expr_p3
+expr_p2:binary  ::= expr_p3 op_group_compare:: expr_p2
+expr_p1:binary  ::= expr_p2 op_group_logic:: expr_p1
+expr_p0%        ::= lambda
+expr_p0%        ::= let_in
+expr_p0%        ::= ternary
+
+expr ::= expr_p0
 
 // Here are the various forms of a syntax element:
 syntax_element ::= expr
