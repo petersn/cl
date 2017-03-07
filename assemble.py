@@ -65,8 +65,11 @@ def make_ast(s):
 			data_field = None
 			if op["data_field"]:
 				args, data_field = args[:-1], args[-1]
-				assert data_field.startswith('"') and data_field.endswith('"')
-				data_field = data_field[1:-1]
+				# If in quotes, the field is a literal, otherwise it's a hex encoding.
+				if data_field.startswith('"') and data_field.endswith('"'):
+					data_field = data_field[1:-1]
+				else:
+					data_field = data_field.decode("hex")
 
 			args = map(int, args)
 			stack[-1].append({"name": opcode_name, "args": args, "data_field": data_field})
