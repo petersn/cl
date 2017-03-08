@@ -155,69 +155,6 @@ def assemble(assembly_unit):
 
 	return "".join(output)
 
-	# These three values are used for computing jump targets.
-	opcode_index = 0
-	labels = {}
-	forwards_references = []
-
-	s = s.replace(";", "\n")
-	for line in s.split("\n"):
-		line = line.split("#")[0].strip()
-		if not line:
-			continue
-
-		# If the line ends with a colon, then it's a label.
-		if line.endswith(":"):
-			label_name = line[:-1]
-			labels[label_name] = opcode_index
-
-		# We now pull out the first token to get the opcode name.
-		opcode_name = line.split()[0]
-		op = mapping[opcode_name]
-		args = line.split(None, op["args"] + 1)
-
-		# Strip off that first argument, that is just the opcode name.
-		assert args[0] == opcode_name	
-		args = args[1:]
-
-		# Make sure that we have the right number of arguments, plus one if we have a data field.
-		assert len(args) == op["args"] + op["data_field"]
-
-		# Pull out the data field, if requested.
-		if op["data_field"]:
-			args, data_field = args[:-1], args[-1]
-			assert data_field.startswith('"') and data_field.endswith('"')
-			data_field = data_field[1:-1]
-
-		# If we're a jump, do special handling to compute our argument.
-		is_jump = opcode_name in ["JUMP", "JUMP_IF_TRUTHY", "JUMP_IF_FALSEY"]
-
-		# Do the actual encoding.
-		opcode_index += 1
-		output.append(chr(op["index"]))
-		# Now we encode the arguments.
-		if is_jump:
-			# Jumps get special encoding -- we insert a None, and save the index into output so we can patch it up later.
-			forwards_references.append((len(output), args[0]))
-			output.append(None)
-		else:
-			# Non-jumps simply encode their arguments as integers.
-			for arg in args:
-				output.append(struct.pack("<q", int(arg)))
-		if op["data_field"]:
-			output.append(struct.pack("<I", len(data_field)))
-			output.append(data_field)
-
-	print "Jump table:", labels
-
-	# Patch up the forwards references.
-	for output_index, label_name in forwards_references:
-		assert label_name in labels, "Undefined label: %r" % (label_name,)
-		jump_target = labels[label_name]
-		output[output_index] = struct.pack("<q", jump_target)
-
-	return "".join(output)
-
 if __name__ == "__main__":
 	with open("source.cla") as f:
 		_input_source = f.read()	
