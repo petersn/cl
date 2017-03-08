@@ -262,7 +262,8 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 			}
 			case OPCODE_INDEX("CALL"): {
 				// First we pop the function argument off the stack.
-				// We do not decrement the ref count, because we will put this into the scope of the function call, which will keep the ref-count conserved.
+				// We do not decrement the ref count yet, because this could cause it to be prematurely collected.
+				// However, once we insert into the child scope below it becomes safe to decrement.
 				ClObj* function_argument = pop(stack);
 				// Now we pop the actual function off the stack.
 				// We will decrement the ref count on this function, but only once we're done evaluating everything.
@@ -280,6 +281,8 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 				ClRecord* child_scope = function_obj->closure->duplicate();
 				// We set the magic value 0 in the child_scope to be the passed in argument.
 				child_scope->store(0, function_argument);
+				// Now that this child scope has ownership over the argument it is safe to decrement our reference count.
+				function_argument->dec_ref();
 				// Do execution!
 				ClObj* return_value = execute(child_scope, function_obj->executable_content);
 				// By deleting the child scope we effectively decrement the ref count on function_argument, completing our obligation.
@@ -367,7 +370,11 @@ int main(int argc, char** argv) {
 
 	auto ctx = new ClContext();
 	auto root_scope = new ClRecord(0, 0, ctx->data_ctx->nil);
-	ctx->execute(root_scope, program);
+
+	// Execute the program!
+	ClObj* return_value = ctx->execute(root_scope, program);
+	// Decrement the ref count so this last return value gets reaped.
+	return_value->dec_ref();
 
 	// Check for leaked objects.
 	if (ctx->data_ctx->objects.size() > 0) {
@@ -376,5 +383,8 @@ int main(int argc, char** argv) {
 			cout << "    " << *obj << endl;
 		}
 	}
+	// Check nil's reference count.
+	if (ctx->data_ctx->nil->ref_count != 1)
+		cout << "WARNING: Ref count on nil not one: " << ctx->data_ctx->nil->ref_count << endl;
 }
 
