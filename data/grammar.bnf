@@ -4,7 +4,7 @@
 variable ::= identifier::
 lambda ::= "\"~ identifier:: "->"~ expr_p7
 
-function_call ::= expr_p9 expr_p6 // expr_p8
+function_call ::= expr_p6 expr_p9 // expr_p8
 let_in ::= "let"~ identifier:: "="~ expr "in"~ expr
 indexing ::= expr_p9 "["~ expr "]"~
 dot_accessor ::= expr_p9 "."~ identifier::
@@ -73,10 +73,15 @@ block_forming% ::= for_block
 assignment ::= identifier:: "="~ expr
 return ::= "return"~ | "return"~ expr
 
+// XXX: This is just for debugging purposes right now.
+// Print should be a function...
+debug_print ::= "print"~ expr
+
 // Here are the various forms of a syntax element:
 syntax_element ::= raw_expr
 syntax_element ::= assignment
 syntax_element ::= return
 syntax_element ::= end
 syntax_element ::= block_forming
+syntax_element ::= debug_print
 

@@ -125,3 +125,26 @@ ClObj* ClContext::binary_in(ClObj* _left, ClObj* _right) {
 	cl_crash("Type error on binary in.");
 }
 
+bool cl_coerce_to_boolean(ClObj* obj) {
+	switch (obj->kind) {
+		case (CL_NIL):
+			return false;
+		case (CL_INT):
+			return static_cast<ClInt*>(obj)->value != 0;
+		case (CL_BOOL):
+			return static_cast<ClBool*>(obj)->truth_value;
+		case (CL_LIST):
+			return static_cast<ClList*>(obj)->contents.size() > 0;
+		case (CL_RECORD):
+		case (CL_MAP):
+			return true;
+		case (CL_STRING):
+			return static_cast<ClString*>(obj)->contents.size() > 0;
+		case (CL_FUNCTION):
+			return true;
+		default:
+			cl_crash("BUG BUG BUG: Unhandled case in cl_coerce_to_boolean.");
+			return false; // Suppress compiler warning.
+	}
+}
+

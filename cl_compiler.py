@@ -37,9 +37,9 @@ class Matcher:
 class SyntaxElement:
 	syntax_element_takes_block = set([
 		"function_definition",
-		"if",
-		"while",
-		"for",
+		"if_block",
+		"while_block",
+		"for_block",
 	])
 
 	def __init__(self, kind, ast):
@@ -152,6 +152,13 @@ class ClParser:
 		return output
 
 class ClCompiler:
+	def __init__(self):
+		self.label_counter = 0
+
+	def new_label(self):
+		self.label_counter += 1
+		return "l%i" % self.label_counter
+
 	class CompilationContext:
 		def __init__(self, target, variable_table, indent=0):
 			self.target, self.variable_table = target, variable_table
@@ -179,16 +186,18 @@ class ClCompiler:
 		return out
 
 	def compute_free_variables(self, ast):
-		free = set()
 		# For lists, union over entries.
 		if isinstance(ast, list):
+			free = set()
 			for entry in ast:
 				free |= self.compute_free_variables(entry)
 			return free
 
 		if isinstance(ast, SyntaxElement):
 			node_type = ast.ast[0]
-			if node_type == "expr":
+			if node_type in ["expr", "return", "debug_print"]:
+				return self.compute_free_variables(ast.ast[1])
+			elif node_type == "expr": # XXX This code path disabled for now.
 				subexpression, = Matcher.match_with(ast.ast, ("expr", [tuple]))
 				return self.compute_free_variables(subexpression)
 			elif node_type == "assignment":
@@ -211,6 +220,8 @@ class ClCompiler:
 					]))
 				ast.args_variables = self.compute_free_variables(ast.args_seq)
 				return set([ast.function_name])
+			elif node_type == "while_block":
+				return self.compute_free_variables(ast.ast[1]) | self.compute_free_variables(ast.block)
 			raise ValueError("Unhandled syntax element type: %r" % (ast.ast,))
 
 		# At this point we are guaranteed to be a tuple from the raw AST given by our parser.
@@ -228,6 +239,13 @@ class ClCompiler:
 				]))
 			# We return the free variables in the function body, *minus* the bound variable.
 			return self.compute_free_variables(expr) - set([variable_name])
+		elif node_type in ["function_call"]:
+			 # The free variables are simply the union of those in each sub-tuple.
+			free = set()
+			for obj in ast[1]:
+				if isinstance(obj, tuple):
+					free |= self.compute_free_variables(obj)
+			return free
 		elif node_type == "binary":
 			expr1, operation_class, operation, expr2 = Matcher.match_with(ast,
 				("binary", [
@@ -245,7 +263,7 @@ class ClCompiler:
 
 		if node_type == "literal":
 			literal_class, literal_value = Matcher.match_with(expr, ("literal", [(str, str)]))
-			ctx.append("# Lit: %r :: %r" % (literal_class, literal_value))
+#			ctx.append("# Lit: %r :: %r" % (literal_class, literal_value))
 			if literal_class == "integer":
 				ctx.append("MAKE_INT %i" % int(literal_value))
 			elif literal_class == "string":
@@ -254,10 +272,37 @@ class ClCompiler:
 				ctx.load(literal_value)
 			else:
 				raise ValueError("Unhandled expr literal type: %r" % (literal_class,))
+		elif node_type == "function_call":
+			expr1, expr2 = Matcher.match_with(expr, ("function_call", [tuple, tuple]))
+			self.generate_bytecode_for_expr(expr1, ctx)
+			self.generate_bytecode_for_expr(expr2, ctx)
+			ctx.append("CALL")
+		elif node_type == "binary":
+			expr1, operation_class, operation, expr2 = Matcher.match_with(expr,
+				("binary", [
+					tuple,
+					(str, str),
+					tuple,
+				]))
+			self.generate_bytecode_for_expr(expr1, ctx)
+			self.generate_bytecode_for_expr(expr2, ctx)
+			# Generate based on the operation.
+			mapping = {
+				"+": "BINARY_PLUS",
+				"-": "BINARY_MINUS",
+				"*": "BINARY_TIMES",
+				"/": "BINARY_DIVIDE",
+				"%": "BINARY_MODULO",
+				"in": "BINARY_IN",
+			}
+			if operation in mapping:
+				ctx.append(mapping[operation])
+			else:
+				raise ValueError("Unhandled binary operation type: %r" % (operation,))
 		else:
 			raise ValueError("Unhandled expr node_type type: %r" % (node_type,))
 
-		ctx.append("# EXPR: %r" % (expr,))
+#		ctx.append("# EXPR: %r" % (expr,))
 
 	def generate_bytecode_for_seq(self, syntax_elem_seq, ctx):
 		# Confirm that our input is a list of syntax elements.
@@ -271,6 +316,19 @@ class ClCompiler:
 				# Generate the value then immediately drop it.
 				self.generate_bytecode_for_expr(expr, ctx)
 				ctx.append("POP")
+			elif syntax_elem.kind == "return":
+				expr_list, = Matcher.match_with(syntax_elem.ast, ("return", list))
+				# If expr_list is empty, then we're an argumentless return, and return nil.
+				if len(expr_list) == 0:
+					ctx.append("MAKE_NIL")
+				else:
+					# Otherwise, generate the return value, and return it.
+					self.generate_bytecode_for_expr(expr_list[0], ctx)
+				ctx.append("RETURN")
+			elif syntax_elem.kind == "debug_print":
+				expr, = Matcher.match_with(syntax_elem.ast, ("debug_print", [tuple]))
+				self.generate_bytecode_for_expr(expr, ctx)
+				ctx.append("PRINT")
 			elif syntax_elem.kind == "assignment":
 				variable_name, expr = Matcher.match_with(syntax_elem.ast,
 					("assignment", [
@@ -279,6 +337,17 @@ class ClCompiler:
 					]))
 				self.generate_bytecode_for_expr(expr, ctx)
 				ctx.store(variable_name)
+			elif syntax_elem.kind == "while_block":
+				expr, = Matcher.match_with(syntax_elem.ast, ("while_block", [tuple]))
+				# Make a label to jump to for testing, and to jump to when done.
+				top_label = self.new_label()
+				bottom_label = self.new_label()
+				ctx.append("%s:" % top_label)
+				self.generate_bytecode_for_expr(expr, ctx)
+				ctx.append("JUMP_IF_FALSEY %s" % bottom_label)
+				self.generate_bytecode_for_seq(syntax_elem.block, ctx)
+				ctx.append("JUMP %s" % top_label)
+				ctx.append("%s:" % bottom_label)
 			elif syntax_elem.kind == "function_definition":
 				# Generate an appropriate closure.
 				# The full inner variable table is just all the free variables used inside.
@@ -292,7 +361,7 @@ class ClCompiler:
 				closure_vars = syntax_elem.body_free - syntax_elem.args_variables
 				transfer_records = [
 					(ctx.variable_table.index(var), inner_variable_table.index(var))
-					for var in closure_vars
+					for var in closure_vars if var in ctx.variable_table
 				]
 				transfer_records_string = "".join(" %i->%i" % pair for pair in transfer_records)
 				body = []
@@ -331,21 +400,24 @@ if __name__ == "__main__":
 	_ast = _parser.parse("""
 
 # Huzzah for Cl!
-x = 1
-def f y
-	y
-	x
+def factorial y
+	accum = 1
+	while y
+		accum = accum * y
+		y = y - 1
+	end
+	return accum
 end
-x
+print factorial 5
 
 """)
 	_compiler = ClCompiler()
 	_bytecode_text = _compiler.generate_overall_bytecode(_ast)
 	print _bytecode_text
 
-	_ast = assemble.make_ast(_bytecode_text)
-	__import__("pprint").pprint(_ast)
-	_bytecode = assemble.assemble(_ast)
+	_assembly_unit = assemble.make_assembly_unit(_bytecode_text)
+	__import__("pprint").pprint(_assembly_unit)
+	_bytecode = assemble.assemble(_assembly_unit)
 	print _bytecode.encode("hex")
 
 	with open("bytecode.cl", "w") as f:

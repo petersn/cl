@@ -1,8 +1,10 @@
 # This is some example Cl assembly.
-MAKE_FUNCTION 10 {
-	MAKE_RECORD 1 3
-	STORE 1
-}
-MAKE_NIL
-CALL
+
+MAKE_INT 0
+JUMP_IF_TRUTHY foo
+MAKE_STRING "Inside."
+PRINT
+foo:
+MAKE_STRING "Outside."
+PRINT
 

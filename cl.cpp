@@ -156,12 +156,12 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 
 	// Main interpreter.
 	vector<ClObj*> stack;
-	int instruction_pointer = 0;
+	unsigned int instruction_pointer = 0;
 	while (instruction_pointer < seq->instructions.size()) {
 		ClInstruction& instruction = seq->instructions[instruction_pointer];
 		instruction_pointer++;
 
-		cout << "Executing: " << cl_opcode_descs[instruction.opcode].name;
+		cout << "[" << instruction_pointer-1 << "] Executing: " << cl_opcode_descs[instruction.opcode].name;
 		for (auto& p : stack)
 			cout << ", " << *p;
 		cout << endl;
@@ -312,6 +312,26 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 			BINARY_OPERATION("BINARY_INDEX", binary_index)
 			BINARY_OPERATION("BINARY_IN", binary_in)
 //			BINARY_OPERATION("BINARY_COMPARE", binary_compare)
+			case OPCODE_INDEX("JUMP"): {
+				instruction_pointer = instruction.args[0];
+				break;
+			}
+			case OPCODE_INDEX("JUMP_IF_TRUTHY"):
+			case OPCODE_INDEX("JUMP_IF_FALSEY"): {
+				ClObj* value = pop(stack);
+				bool truth_value = cl_coerce_to_boolean(value);
+				// Be careful not to decrement the reference until after we're done with the object.
+				value->dec_ref();
+				// Using != as an idiom for logical xor on bools.
+				if (truth_value != (instruction.opcode == OPCODE_INDEX("JUMP_IF_FALSEY")))
+					instruction_pointer = instruction.args[0];
+				break;
+			}
+			case OPCODE_INDEX("RETURN"): {
+				// Simply kill the execution of this function by setting the instruction pointer to the end of the sequence of instructions.
+				instruction_pointer = seq->instructions.size();
+				break;
+			}
 			case OPCODE_INDEX("PRINT"): {
 				ClObj* obj = pop(stack);
 				cout << " ---> Printing: " << *obj << endl;

@@ -57,6 +57,7 @@ constexpr ClOpcodeDesc cl_opcode_descs[] = {
 	ClOpcodeDesc({"JUMP",           1,  0, false}),
 	ClOpcodeDesc({"JUMP_IF_TRUTHY", 1, -1, false}),
 	ClOpcodeDesc({"JUMP_IF_FALSEY", 1, -1, false}),
+	ClOpcodeDesc({"RETURN",         0,  0, false}),
 	ClOpcodeDesc({"PRINT",          0, -1, false}),
 // END-PY-PARSING
 };
@@ -121,7 +122,7 @@ struct ClInstructionSequence {
 };
 
 std::ostream& operator << (std::ostream& os, const ClInstructionSequence& seq);
-void cl_crash(std::string message);
+void cl_crash(std::string message) __attribute__ ((noreturn));
 
 class ClContext {
 public:
@@ -140,6 +141,8 @@ public:
 	ClObj* binary_in(ClObj* left, ClObj* right);
 	ClObj* binary_compare(ClObj* left, ClObj* right, cl_int_t comparison_type);
 };
+
+bool cl_coerce_to_boolean(ClObj* obj);
 
 #endif
 

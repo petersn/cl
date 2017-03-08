@@ -3,7 +3,7 @@
 
 escaped_newline~ = \\\n
 comment~         = #.*
-keyword          = (def|if|else|for|while|return|end)(?!['a-zA-Z_])
+keyword          = (def|if|else|for|while|return|end|print)(?!['a-zA-Z_])
 op_group_logic   = (and|or)(?!['a-zA-Z_])
 reserved         = \\|->
 open_paren       = [(]
