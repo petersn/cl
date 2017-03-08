@@ -40,6 +40,9 @@ ClObj* ClContext::binary_plus(ClObj* _left, ClObj* _right) {
 		Give(ClList)
 		obj->contents = left->contents;
 		obj->contents.insert(obj->contents.end(), right->contents.begin(), right->contents.end());
+		// We now increment every reference.
+		for (ClObj* p : obj->contents)
+			p->inc_ref();
 	End_Case
 
 	cl_crash("Type error on binary plus.");

@@ -411,26 +411,26 @@ if __name__ == "__main__":
 	_ast = _parser.parse("""
 
 # Huzzah for Cl!
-#def build_adder x
-#	def the_adder y
-#		return x + y
-#	end
-#	return the_adder
-#end
-
-#five_adder = build_adder ([5])
-
-#print five_adder ([7])
-
-def factorial y
-	accum = 1
-	while y
-		accum = accum * y
-		y = y - 1
+def build_adder x
+	def the_adder y
+		return x + y
 	end
-	return accum
+	return the_adder
 end
-print factorial 5
+
+five_adder = build_adder ([5])
+
+print five_adder ([7])
+
+#def factorial y
+#	accum = 1
+#	while y
+#		accum = accum * y
+#		y = y - 1
+#	end
+#	return accum
+#end
+#print factorial 5
 
 """)
 	_compiler = ClCompiler()
