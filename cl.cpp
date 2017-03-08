@@ -326,7 +326,7 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 	if (stack.size() > 0) {
 		return_value = pop(stack);
 	} else {
-		top_of_stack = data_ctx->nil;
+		return_value = data_ctx->nil;
 		// This increment is necessary -- the caller will insert our return value somewhere without
 		// incrementing the reference count on the object we hand them, so this is correct.
 		data_ctx->nil->inc_ref();
