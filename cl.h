@@ -52,7 +52,7 @@ constexpr ClOpcodeDesc cl_opcode_descs[] = {
 	ClOpcodeDesc({"BINARY_MODULO",  0, -1, false}),
 	ClOpcodeDesc({"BINARY_INDEX",   0, -1, false}),
 	ClOpcodeDesc({"BINARY_IN",      0, -1, false}),
-	ClOpcodeDesc({"BINARY_COMPARE", 0, -1, false}),
+	ClOpcodeDesc({"BINARY_COMPARE", 1, -1, false}),
 	ClOpcodeDesc({"STORE_INDEX",    0, -2, false}),
 	ClOpcodeDesc({"JUMP",           1,  0, false}),
 	ClOpcodeDesc({"JUMP_IF_TRUTHY", 1, -1, false}),
@@ -60,6 +60,15 @@ constexpr ClOpcodeDesc cl_opcode_descs[] = {
 	ClOpcodeDesc({"RETURN",         0,  0, false}),
 	ClOpcodeDesc({"PRINT",          0, -1, false}),
 // END-PY-PARSING
+};
+
+enum ClComparisonType {
+	CL_COMP_EQ,
+	CL_COMP_NOT_EQ,
+	CL_COMP_LESS_THAN,
+	CL_COMP_GREATER_THAN,
+	CL_COMP_LESS_THAN_OR_EQ,
+	CL_COMP_GREATER_THAN_OR_EQ,
 };
 
 constexpr int OP_MAX_OPCODE = (sizeof(cl_opcode_descs) / sizeof(cl_opcode_descs[0]));
@@ -139,7 +148,7 @@ public:
 	ClObj* binary_modulo(ClObj* left, ClObj* right);
 	ClObj* binary_index(ClObj* left, ClObj* right);
 	ClObj* binary_in(ClObj* left, ClObj* right);
-	ClObj* binary_compare(ClObj* left, ClObj* right, cl_int_t comparison_type);
+	ClObj* binary_compare(ClObj* left, ClObj* right, ClComparisonType comparison_type);
 };
 
 bool cl_coerce_to_boolean(ClObj* obj);

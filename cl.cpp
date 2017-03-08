@@ -202,7 +202,6 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 			}
 			case OPCODE_INDEX("MAKE_INT"): {
 				auto obj = new ClInt();
-				obj->ref_count = 1;
 				data_ctx->register_object(obj);
 
 				obj->value = instruction.args[0];
@@ -211,14 +210,12 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 			}
 			case OPCODE_INDEX("MAKE_LIST"): {
 				auto obj = new ClList();
-				obj->ref_count = 1;
 				data_ctx->register_object(obj);
 				stack.push_back(obj);
 				break;
 			}
 			case OPCODE_INDEX("MAKE_RECORD"): {
 				auto obj = new ClRecord(instruction.args[0], instruction.args[1], data_ctx->nil);
-				obj->ref_count = 1;
 				data_ctx->register_object(obj);
 
 				stack.push_back(obj);
@@ -226,7 +223,6 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 			}
 			case OPCODE_INDEX("MAKE_MAP"): {
 				auto obj = new ClMap();
-				obj->ref_count = 1;
 				data_ctx->register_object(obj);
 
 				stack.push_back(obj);
@@ -234,7 +230,6 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 			}
 			case OPCODE_INDEX("MAKE_STRING"): {
 				auto obj = new ClString();
-				obj->ref_count = 1;
 				data_ctx->register_object(obj);
 
 				obj->contents = instruction.data_field;
@@ -243,13 +238,11 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 			}
 			case OPCODE_INDEX("MAKE_FUNCTION"): {
 				auto obj = new ClFunction();
-				obj->ref_count = 1;
 				data_ctx->register_object(obj);
 
 				// To make a function we produce a new record for its scope.
 				ClMakeFunctionDescriptor& desc = instruction.make_function_descriptor;
 				ClRecord* func_scope = new ClRecord(0, desc.subscope_length, data_ctx->nil);
-				func_scope->ref_count = 1;
 				data_ctx->register_object(func_scope);
 				// We then copy into the scope as per our closure descriptor.
 				for (auto& p : desc.subscope_closure_descriptor)
@@ -294,6 +287,18 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 				stack.push_back(return_value);
 				break;
 			}
+			case OPCODE_INDEX("LIST_APPEND"): {
+				ClObj* new_item = pop(stack);
+				if (stack.size() == 0)
+					cl_crash("Stack underflow.");
+				ClObj* possibly_list = stack.back();
+				if (possibly_list->kind != CL_LIST)
+					cl_crash("Attempted to append onto non-list.");
+				ClList* list = static_cast<ClList*>(possibly_list);
+				list->contents.push_back(new_item);
+				// There is no need to adjust reference counts, because new_item was moved off the stack and into a list.
+				break;
+			}
 #define BINARY_OPERATION(name, func) \
 			case OPCODE_INDEX(name): { \
 				ClObj* right = pop(stack); \
@@ -311,7 +316,15 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 			BINARY_OPERATION("BINARY_MODULO", binary_modulo)
 			BINARY_OPERATION("BINARY_INDEX", binary_index)
 			BINARY_OPERATION("BINARY_IN", binary_in)
-//			BINARY_OPERATION("BINARY_COMPARE", binary_compare)
+			case OPCODE_INDEX("BINARY_COMPARE"): {
+				ClObj* right = pop(stack);
+				ClObj* left = pop(stack);
+				ClObj* result = binary_compare(left, right, (ClComparisonType)instruction.args[0]);
+				left->dec_ref();
+				right->dec_ref();
+				stack.push_back(result);
+				break;
+			}
 			case OPCODE_INDEX("JUMP"): {
 				instruction_pointer = instruction.args[0];
 				break;

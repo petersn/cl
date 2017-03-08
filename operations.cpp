@@ -125,6 +125,27 @@ ClObj* ClContext::binary_in(ClObj* _left, ClObj* _right) {
 	cl_crash("Type error on binary in.");
 }
 
+ClObj* ClContext::binary_compare(ClObj* _left, ClObj* _right, ClComparisonType comparison_type) {
+	Type_Case(ClInt, ClInt)
+		bool truth_value;
+		switch (comparison_type) {
+			case (CL_COMP_EQ):                 truth_value = left->value == right->value; break;
+			case (CL_COMP_NOT_EQ):             truth_value = left->value != right->value; break;
+			case (CL_COMP_LESS_THAN):          truth_value = left->value <  right->value; break;
+			case (CL_COMP_GREATER_THAN):       truth_value = left->value >  right->value; break;
+			case (CL_COMP_LESS_THAN_OR_EQ):    truth_value = left->value <= right->value; break;
+			case (CL_COMP_GREATER_THAN_OR_EQ): truth_value = left->value >= right->value; break;
+			default: cl_crash("Bad comparison kind in binary compare.");
+		}
+		// Grab the appropriate statically allocated boolean object.
+		ClObj* obj = data_ctx->static_booleans[truth_value];
+		obj->inc_ref();
+		return obj;
+	End_Case
+
+	cl_crash("Type error on binary compare.");
+}
+
 bool cl_coerce_to_boolean(ClObj* obj) {
 	switch (obj->kind) {
 		case (CL_NIL):

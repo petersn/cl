@@ -14,7 +14,6 @@ std::ostream& operator << (std::ostream& os, const ClObj& obj) {
 void ClObj::dec_ref() {
 	ref_count--;
 	if (ref_count <= 0) {
-//		cout << "          (Collecting:) " << *this << endl;
 		parent->objects.erase(this);
 		delete this;
 	}

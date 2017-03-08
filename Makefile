@@ -1,5 +1,5 @@
 
-CPPFLAGS=-std=c++11 -g -Wall -Wextra -Wno-unused-parameter
+CPPFLAGS=-std=c++11 -g -Wall -Wextra -Wno-unused-parameter -O3
 
 all: cl
 

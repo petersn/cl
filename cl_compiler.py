@@ -239,7 +239,7 @@ class ClCompiler:
 				]))
 			# We return the free variables in the function body, *minus* the bound variable.
 			return self.compute_free_variables(expr) - set([variable_name])
-		elif node_type in ["function_call"]:
+		elif node_type in ["function_call", "list_literal"]:
 			 # The free variables are simply the union of those in each sub-tuple.
 			free = set()
 			for obj in ast[1]:
@@ -272,6 +272,11 @@ class ClCompiler:
 				ctx.load(literal_value)
 			else:
 				raise ValueError("Unhandled expr literal type: %r" % (literal_class,))
+		elif node_type == "list_literal":
+			ctx.append("MAKE_LIST")
+			for entry_expr in expr[1]:
+				self.generate_bytecode_for_expr(entry_expr, ctx)
+				ctx.append("LIST_APPEND")
 		elif node_type == "function_call":
 			expr1, expr2 = Matcher.match_with(expr, ("function_call", [tuple, tuple]))
 			self.generate_bytecode_for_expr(expr1, ctx)
@@ -294,6 +299,12 @@ class ClCompiler:
 				"/": "BINARY_DIVIDE",
 				"%": "BINARY_MODULO",
 				"in": "BINARY_IN",
+				"==": "BINARY_COMPARE 0",
+				"!=": "BINARY_COMPARE 1",
+				"<": "BINARY_COMPARE 2",
+				">": "BINARY_COMPARE 3",
+				"<=": "BINARY_COMPARE 4",
+				">=": "BINARY_COMPARE 5",
 			}
 			if operation in mapping:
 				ctx.append(mapping[operation])
@@ -400,6 +411,17 @@ if __name__ == "__main__":
 	_ast = _parser.parse("""
 
 # Huzzah for Cl!
+#def build_adder x
+#	def the_adder y
+#		return x + y
+#	end
+#	return the_adder
+#end
+
+#five_adder = build_adder ([5])
+
+#print five_adder ([7])
+
 def factorial y
 	accum = 1
 	while y
