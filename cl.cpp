@@ -320,15 +320,26 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 		}
 	}
 
-	// Return the top of stack, by convention, or nil if the stack is empty.
-	ClObj* top_of_stack = stack.size() == 0 ? data_ctx->nil : pop(stack);
+	// Here we compute the return value.
+	// Return the top of stack, or nil if the stack is empty.
+	ClObj* return_value;
+	if (stack.size() > 0) {
+		return_value = pop(stack);
+	} else {
+		top_of_stack = data_ctx->nil;
+		// This increment is necessary -- the caller will insert our return value somewhere without
+		// incrementing the reference count on the object we hand them, so this is correct.
+		data_ctx->nil->inc_ref();
+	}
+
 	// Decrement references to all the remaining objects in the stack, as our stack is about to be reaped.
 	for (auto& p : stack)
 		p->dec_ref();
-	// Return the top-of-stack value.
+
+	// Return the top-of-stack (or nil) value.
 	// The caller shouldn't increment the reference on this object when it inserts it somewhere, because
 	// its ref count is already one high from the fact that we exempted it from the above decrementation.
-	return top_of_stack;
+	return return_value;
 }
 
 // Include the various operations and functions.
