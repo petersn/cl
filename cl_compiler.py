@@ -302,6 +302,8 @@ class ClCompiler:
 				# Finally, we flatten our definition.
 				def_string = "\n".join(self.flatten(definition))
 				ctx.append(def_string)
+				# We now have the function on the stack, so assign it into its name.
+				ctx.store(syntax_elem.function_name)
 			else:
 				raise ValueError("Unhandled case: %r" % (syntax_elem.kind,))
 
@@ -317,7 +319,7 @@ class ClCompiler:
 		# Here the None corresponds to the argument our MAKE_FUNCTION will ignore.
 
 		body = []
-		output = ["MAKE_FUNCTION %s {" % len(global_variable_table), body, "}", "MAKE_NIL", "CALL"]
+		output = ["MAKE_FUNCTION %s {" % len(global_variable_table), body, "}", "MAKE_NIL", "CALL", "POP"]
 		ctx = ClCompiler.CompilationContext(body, global_variable_table, indent=2)
 		self.generate_bytecode_for_seq(syntax_elem_seq, ctx)
 
@@ -334,6 +336,7 @@ def f y
 	y
 	x
 end
+x
 
 """)
 	_compiler = ClCompiler()
