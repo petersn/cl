@@ -153,5 +153,12 @@ public:
 
 bool cl_coerce_to_boolean(ClObj* obj);
 
+// Our C API.
+extern "C" {
+
+void cl_execute_string(const char* input, int length);
+
+}
+
 #endif
 

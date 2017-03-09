@@ -162,6 +162,6 @@ if __name__ == "__main__":
 	__import__("pprint").pprint(_assembly_unit)
 	_bytecode = assemble(_assembly_unit)
 	print _bytecode.encode("hex")
-	with open("bytecode.cl", "w") as f:
+	with open("bytecode.clo", "w") as f:
 		f.write(_bytecode)
 

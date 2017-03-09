@@ -388,17 +388,17 @@ string slurp_stream(ifstream& in) {
 }
 
 int main(int argc, char** argv) {
-	ifstream ifs("bytecode.cl", ios::in | ios::binary);
+	ifstream ifs("bytecode.clo", ios::in | ios::binary);
 	string slurp = slurp_stream(ifs);
-
-//	cin >> noskipws;
-//	istream_iterator<char> it(cin);
-//	istream_iterator<char> end;
-//	string stdin_slurp(it, end);	
-
 	cout << "Read in " << slurp.size() << " bytes of bytecode." << endl;
 
-	auto program = ClInstructionSequence::decode_opcodes(slurp);
+	cl_execute_string(slurp.c_str(), slurp.size());
+	return 0;
+}
+
+extern "C" void cl_execute_string(const char* input, int length) {
+	string s(input, length);
+	auto program = ClInstructionSequence::decode_opcodes(s);
 	cout << *program;
 
 	auto ctx = new ClContext();

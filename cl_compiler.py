@@ -406,10 +406,17 @@ class ClCompiler:
 		text = "\n".join(ClCompiler.flatten(output))
 		return text
 
-if __name__ == "__main__":
-	_parser = ClParser()
-	_ast = _parser.parse("""
+def source_to_bytecode(source):
+	parser = ClParser()
+	compiler = ClCompiler()
+	ast = parser.parse(source)
+	bytecode_text = compiler.generate_overall_bytecode(ast)
+	assembly_unit = assemble.make_assembly_unit(bytecode_text)
+	bytecode = assemble.assemble(assembly_unit)
+	return bytecode
 
+if __name__ == "__main__":
+	source = """
 # Huzzah for Cl!
 def build_adder x
 	def the_adder y
@@ -431,18 +438,10 @@ print five_adder ([7])
 #	return accum
 #end
 #print factorial 5
+"""
+	_bytecode = source_to_bytecode(source)
 
-""")
-	_compiler = ClCompiler()
-	_bytecode_text = _compiler.generate_overall_bytecode(_ast)
-	print _bytecode_text
-
-	_assembly_unit = assemble.make_assembly_unit(_bytecode_text)
-	__import__("pprint").pprint(_assembly_unit)
-	_bytecode = assemble.assemble(_assembly_unit)
-	print _bytecode.encode("hex")
-
-	with open("bytecode.cl", "w") as f:
+	with open("bytecode.clo", "w") as f:
 		f.write(_bytecode)
 
 #	for obj in o:
