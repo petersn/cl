@@ -144,10 +144,24 @@ ClFunction::~ClFunction() {
 	// However, our closure should have its reference decremented.
 	closure->dec_ref();
 	// In the current implementation this should ALWAYS cause the closure to be collected, but maybe later it'll be possible to extract this ClRecord?
+
+	// We also need to decrement the reference count of the closed this pointer, if we're a bound method.
+	if (closed_this != nullptr)
+		closed_this->dec_ref();
 }
 
 void ClFunction::pprint(ostream& os) const {
 	os << "Function_" << executable_content->instructions.size();
+}
+
+ClFunction* ClFunction::produce_bound_method(ClObj* object_who_has_method) {
+	auto bound_method = new ClFunction();
+	bound_method->executable_content = executable_content;
+	bound_method->closure = closure;
+	closure->inc_ref();
+	bound_method->closed_this = object_who_has_method;
+	object_who_has_method->inc_ref();
+	return bound_method;
 }
 
 // ===== ClDataContext =====
@@ -160,6 +174,9 @@ ClDataContext::ClDataContext() {
 	static_booleans[1] = new ClBool();
 	static_booleans[1]->truth_value = true;
 	// We explicitly do NOT register the above, so they won't get garbage collected.
+
+	// We now build an array of default lookup tables for our default types.
+	default_type_tables = new unordered_map<string, ClObj*>[CL_KIND_COUNT];
 }
 
 ClObj* ClDataContext::register_object(ClObj* obj) {

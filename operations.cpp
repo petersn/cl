@@ -14,7 +14,6 @@
 
 #define Give(type) \
 	auto obj = new type(); \
-	obj->ref_count = 1; \
 	data_ctx->register_object(obj);
 
 static cl_int_t util_length_wrap(cl_int_t index, cl_int_t length) {
@@ -149,6 +148,8 @@ ClObj* ClContext::binary_compare(ClObj* _left, ClObj* _right, ClComparisonType c
 	cl_crash("Type error on binary compare.");
 }
 
+// ===== Major helpers =====
+
 bool cl_coerce_to_boolean(ClObj* obj) {
 	switch (obj->kind) {
 		case (CL_NIL):
@@ -170,5 +171,63 @@ bool cl_coerce_to_boolean(ClObj* obj) {
 			cl_crash("BUG BUG BUG: Unhandled case in cl_coerce_to_boolean.");
 			return false; // Suppress compiler warning.
 	}
+}
+
+ClObj* cl_perform_function_call(ClObj* supposed_function, ClObj* argument) {
+	// TODO.
+	return nullptr;
+}
+
+ClObj* cl_lookup_in_object_table(ClObj* object, const string& name) {
+	// TODO.
+	return nullptr;
+}
+
+// ===== Built-in functions =====
+
+ClObj* cl_builtin_nil_to_string(ClFunction* this_function, ClObj* _argument) {
+	assert_kind<ClNil>(_argument);
+	ClString* result = new ClString();
+	this_function->parent->register_object(result);
+	result->contents = "nil";
+	return result;
+}
+
+ClObj* cl_builtin_int_to_string(ClFunction* this_function, ClObj* _argument) {
+	ClInt* argument = assert_kind<ClInt>(_argument);
+	ClString* result = new ClString();
+	this_function->parent->register_object(result);
+	result->contents = to_string(argument->value);
+	return result;
+}
+
+ClObj* cl_builtin_bool_to_string(ClFunction* this_function, ClObj* _argument) {
+	ClBool* argument = assert_kind<ClBool>(_argument);
+	ClString* result = new ClString();
+	this_function->parent->register_object(result);
+	if (argument->truth_value)
+		result->contents = "True";
+	else
+		result->contents = "False";
+	return result;
+}
+
+ClObj* cl_builtin_list_to_string(ClFunction* this_function, ClObj* _argument) {
+	ClList* argument = assert_kind<ClList>(_argument);
+	ClString* result = new ClString();
+	this_function->parent->register_object(result);
+	stringstream ss;
+	ss << "[";
+	for (size_t i = 0; i < argument->contents.size(); i++) {
+		if (i != 0)
+			ss << ", ";
+		// Do a dynamic lookup of the value.
+		// TODO: Lookup and call here.
+//		ClFunction*
+//		ss << 
+	}
+	ss << "]";
+	result->contents = ss.str();
+	return result;
 }
 

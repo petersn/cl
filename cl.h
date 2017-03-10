@@ -5,6 +5,7 @@
 
 // Forward declaration for the cyclic include of structures.h.
 struct ClInstructionSequence;
+void cl_crash(std::string message) __attribute__ ((noreturn));
 
 #include "structures.h"
 #include <string.h>
@@ -131,7 +132,6 @@ struct ClInstructionSequence {
 };
 
 std::ostream& operator << (std::ostream& os, const ClInstructionSequence& seq);
-void cl_crash(std::string message) __attribute__ ((noreturn));
 
 class ClContext {
 public:
@@ -152,6 +152,8 @@ public:
 };
 
 bool cl_coerce_to_boolean(ClObj* obj);
+ClObj* cl_perform_function_call(ClObj* supposed_function, ClObj* argument);
+ClObj* cl_lookup_in_object_table(ClObj* object, const std::string& name);
 
 // Our C API.
 extern "C" {

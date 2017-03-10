@@ -9,7 +9,7 @@
 #include <unordered_set>
 #include <vector>
 #include <string>
-#include <map>
+#include <unordered_map>
 
 // Forward declarations for the cyclic include of cl.h.
 class ClObj;
@@ -28,7 +28,18 @@ enum ClKind {
 	CL_MAP,
 	CL_STRING,
 	CL_FUNCTION,
-	CL_INVALID,
+	CL_KIND_COUNT,
+};
+
+const char* const cl_kind_to_name[CL_KIND_COUNT] = {
+	"Nil",
+	"Int",
+	"Bool",
+	"List",
+	"Record",
+	"Map",
+	"String",
+	"Function",
 };
 
 struct ClObj {
@@ -92,7 +103,7 @@ struct ClRecord : public ClObj {
 };
 
 struct ClMap : public ClObj {
-	std::map<cl_int_t, ClObj*> mapping;
+	std::unordered_map<cl_int_t, ClObj*> mapping;
 
 	ClMap() : ClObj(CL_MAP) {}
 	virtual ~ClMap();
@@ -111,16 +122,23 @@ struct ClFunction : public ClObj {
 	ClInstructionSequence* executable_content;
 	// ... and a record for the local closure.
 	ClRecord* closure;
+	// Finally, when pulling out bound methods we generate a closed_this.
+	ClObj* closed_this = nullptr;
+	// Function pointer for implementing native functions.
+	ClObj* (*native_executable_content)(ClFunction* this_function, ClObj* argument) = nullptr;
 
 	virtual ~ClFunction();
 	ClFunction() : ClObj(CL_FUNCTION) {}
 	virtual void pprint(std::ostream& os) const;
+	ClFunction* produce_bound_method(ClObj* object_who_has_method);
 };
 
 struct ClDataContext {
 	std::unordered_set<ClObj*> objects;
 	ClNil* nil;
 	ClBool* static_booleans[2];
+
+	std::unordered_map<std::string, ClObj*>* default_type_tables;
 
 	ClDataContext();
 	ClObj* register_object(ClObj* obj);
@@ -130,15 +148,50 @@ namespace cl_template_trickery {
 	// Here we use a specialized template to allow users to look up the corresponding ClKind to a given ClObj subclass.
 	template <typename T> struct get_kind {};
 
-	template <> struct get_kind<ClObj>      { constexpr static ClKind kind = CL_INVALID; };
-	template <> struct get_kind<ClNil>      { constexpr static ClKind kind = CL_NIL; };
-	template <> struct get_kind<ClInt>      { constexpr static ClKind kind = CL_INT; };
-	template <> struct get_kind<ClBool>     { constexpr static ClKind kind = CL_BOOL; };
-	template <> struct get_kind<ClList>     { constexpr static ClKind kind = CL_LIST; };
-	template <> struct get_kind<ClRecord>   { constexpr static ClKind kind = CL_RECORD; };
-	template <> struct get_kind<ClMap>      { constexpr static ClKind kind = CL_MAP; };
-	template <> struct get_kind<ClString>   { constexpr static ClKind kind = CL_STRING; };
-	template <> struct get_kind<ClFunction> { constexpr static ClKind kind = CL_FUNCTION; };
+	template <> struct get_kind<ClNil>      {
+		constexpr static ClKind kind = CL_NIL;
+//		const char* name = "Nil";
+	};
+	template <> struct get_kind<ClInt>      {
+		constexpr static ClKind kind = CL_INT;
+//		const char* name = "Int";
+	};
+	template <> struct get_kind<ClBool>     {
+		constexpr static ClKind kind = CL_BOOL;
+//		const char* name = "Bool";
+	};
+	template <> struct get_kind<ClList>     {
+		constexpr static ClKind kind = CL_LIST;
+//		const char* name = "List";
+	};
+	template <> struct get_kind<ClRecord>   {
+		constexpr static ClKind kind = CL_RECORD;
+//		const char* name = "Record";
+	};
+	template <> struct get_kind<ClMap>      {
+		constexpr static ClKind kind = CL_MAP;
+//		const char* name = "Map";
+	};
+	template <> struct get_kind<ClString>   {
+		constexpr static ClKind kind = CL_STRING;
+//		const char* name = "String";
+	};
+	template <> struct get_kind<ClFunction> {
+		constexpr static ClKind kind = CL_FUNCTION;
+//		const char* name = "Function";
+	};
+}
+
+template <typename T>
+static inline T* assert_kind(ClObj* obj) {
+	if (obj->kind != cl_template_trickery::get_kind<T>::kind) {
+		std::string error_message = "Type error, expected a ";
+		error_message += std::string(cl_kind_to_name[cl_template_trickery::get_kind<T>::kind]);
+		error_message += ", instead got: ";
+		error_message += cl_kind_to_name[obj->kind];
+		cl_crash(error_message.c_str());
+	};
+	return static_cast<T*>(obj);
 }
 
 #endif

@@ -141,6 +141,9 @@ void cl_crash(string message) {
 
 ClContext::ClContext() {
 	data_ctx = new ClDataContext();
+
+	// Populate the methods for the basic types.
+//	data_ctx->default_type_tables[CL_NIL]["to_string"] = clbuiltins_nil_to_string;
 }
 
 static ClObj* pop(vector<ClObj*>& stack) {
@@ -260,26 +263,30 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 				ClObj* function_argument = pop(stack);
 				// Now we pop the actual function off the stack.
 				// We will decrement the ref count on this function, but only once we're done evaluating everything.
-				ClObj* possibly_function_obj = pop(stack);
-				// Type check the object.
-				if (possibly_function_obj->kind != CL_FUNCTION) {
-					cout << "Trying to call this: (" << *possibly_function_obj << " " << *function_argument << ")" << endl;
-					cout << "KIND: " << possibly_function_obj->kind << endl;
-					cout << "KIND: " << function_argument->kind << endl;
-					cl_crash("Attempted to call non-function.");
+				ClFunction* function_obj = assert_kind<ClFunction>(pop(stack));
+				// Declare a return value, that the following code will fill.
+				ClObj* return_value;
+				// We now do an important case check, to determin if function_obj is a native function, or Cl function.
+				// If it's a Cl function, then function_obj->native_executable_content is nullptr.
+				// If it's native, then function_obj->native_executable_content is a ClObj* (*)(ClObj* argument) pointing to the code.
+				if (function_obj->native_executable_content != nullptr) {
+					// === Native function call ===
+					return_value = function_obj->native_executable_content(function_obj, function_argument);
+					stack.push_back(return_value);
+				} else {
+					// === Cl (non-native) function call ===
+					// We duplicate the function closure to get a scope to execute in.
+					// Note that we neither register nor set the ref count on this record, because we're about to throw it away.
+					ClRecord* child_scope = function_obj->closure->duplicate();
+					// We set the magic value 0 in the child_scope to be the passed in argument.
+					child_scope->store(0, function_argument);
+					// Now that this child scope has ownership over the argument it is safe to decrement our reference count.
+					function_argument->dec_ref();
+					// Do execution!
+					return_value = execute(child_scope, function_obj->executable_content);
+					// By deleting the child scope we effectively decrement the ref count on function_argument, completing our obligation.
+					delete child_scope;
 				}
-				ClFunction* function_obj = static_cast<ClFunction*>(possibly_function_obj);
-				// We duplicate the function closure to get a scope to execute in.
-				// Note that we neither register nor set the ref count on this record, because we're about to throw it away.
-				ClRecord* child_scope = function_obj->closure->duplicate();
-				// We set the magic value 0 in the child_scope to be the passed in argument.
-				child_scope->store(0, function_argument);
-				// Now that this child scope has ownership over the argument it is safe to decrement our reference count.
-				function_argument->dec_ref();
-				// Do execution!
-				ClObj* return_value = execute(child_scope, function_obj->executable_content);
-				// By deleting the child scope we effectively decrement the ref count on function_argument, completing our obligation.
-				delete child_scope;
 				// Now that execution of the call is over, it is safe to decerement the ref count on function_obj.
 				function_obj->dec_ref();
 				// We push the return value onto our stack and do NOT increment the reference count, because
