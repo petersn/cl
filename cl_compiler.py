@@ -220,7 +220,7 @@ class ClCompiler:
 					]))
 				ast.args_variables = self.compute_free_variables(ast.args_seq)
 				return set([ast.function_name])
-			elif node_type == "while_block":
+			elif node_type in ("while_block", "if_block"):
 				return self.compute_free_variables(ast.ast[1]) | self.compute_free_variables(ast.block)
 			raise ValueError("Unhandled syntax element type: %r" % (ast.ast,))
 
@@ -348,8 +348,8 @@ class ClCompiler:
 					]))
 				self.generate_bytecode_for_expr(expr, ctx)
 				ctx.store(variable_name)
-			elif syntax_elem.kind == "while_block":
-				expr, = Matcher.match_with(syntax_elem.ast, ("while_block", [tuple]))
+			elif syntax_elem.kind in ["while_block", "if_block"]:
+				expr, = Matcher.match_with(syntax_elem.ast, (syntax_elem.kind, [tuple]))
 				# Make a label to jump to for testing, and to jump to when done.
 				top_label = self.new_label()
 				bottom_label = self.new_label()
@@ -357,7 +357,8 @@ class ClCompiler:
 				self.generate_bytecode_for_expr(expr, ctx)
 				ctx.append("JUMP_IF_FALSEY %s" % bottom_label)
 				self.generate_bytecode_for_seq(syntax_elem.block, ctx)
-				ctx.append("JUMP %s" % top_label)
+				if syntax_elem.kind == "while_block":
+					ctx.append("JUMP %s" % top_label)
 				ctx.append("%s:" % bottom_label)
 			elif syntax_elem.kind == "function_definition":
 				# Generate an appropriate closure.
