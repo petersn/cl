@@ -14,6 +14,7 @@
 // Forward declarations for the cyclic include of cl.h.
 class ClObj;
 class ClRecord;
+class ClFunction;
 class ClDataContext;
 typedef int64_t cl_int_t;
 
@@ -141,45 +142,24 @@ struct ClDataContext {
 	std::unordered_map<std::string, ClObj*>* default_type_tables;
 
 	ClDataContext();
+	// In order to be tracked by the garbage collector, you must call register_object on each new ClObj allocated.
 	ClObj* register_object(ClObj* obj);
+	// If you don't want garbage collection, and thus don't want a ``leaked object'' warning at exit, register with this. 
+	ClObj* register_permanent_object(ClObj* obj);
 };
 
 namespace cl_template_trickery {
 	// Here we use a specialized template to allow users to look up the corresponding ClKind to a given ClObj subclass.
 	template <typename T> struct get_kind {};
 
-	template <> struct get_kind<ClNil>      {
-		constexpr static ClKind kind = CL_NIL;
-//		const char* name = "Nil";
-	};
-	template <> struct get_kind<ClInt>      {
-		constexpr static ClKind kind = CL_INT;
-//		const char* name = "Int";
-	};
-	template <> struct get_kind<ClBool>     {
-		constexpr static ClKind kind = CL_BOOL;
-//		const char* name = "Bool";
-	};
-	template <> struct get_kind<ClList>     {
-		constexpr static ClKind kind = CL_LIST;
-//		const char* name = "List";
-	};
-	template <> struct get_kind<ClRecord>   {
-		constexpr static ClKind kind = CL_RECORD;
-//		const char* name = "Record";
-	};
-	template <> struct get_kind<ClMap>      {
-		constexpr static ClKind kind = CL_MAP;
-//		const char* name = "Map";
-	};
-	template <> struct get_kind<ClString>   {
-		constexpr static ClKind kind = CL_STRING;
-//		const char* name = "String";
-	};
-	template <> struct get_kind<ClFunction> {
-		constexpr static ClKind kind = CL_FUNCTION;
-//		const char* name = "Function";
-	};
+	template <> struct get_kind<ClNil>      { constexpr static ClKind kind = CL_NIL; };
+	template <> struct get_kind<ClInt>      { constexpr static ClKind kind = CL_INT; };
+	template <> struct get_kind<ClBool>     { constexpr static ClKind kind = CL_BOOL; };
+	template <> struct get_kind<ClList>     { constexpr static ClKind kind = CL_LIST; };
+	template <> struct get_kind<ClRecord>   { constexpr static ClKind kind = CL_RECORD; };
+	template <> struct get_kind<ClMap>      { constexpr static ClKind kind = CL_MAP; };
+	template <> struct get_kind<ClString>   { constexpr static ClKind kind = CL_STRING; };
+	template <> struct get_kind<ClFunction> { constexpr static ClKind kind = CL_FUNCTION; };
 }
 
 template <typename T>

@@ -254,6 +254,13 @@ class ClCompiler:
 					tuple,
 				]))
 			return self.compute_free_variables(expr1) | self.compute_free_variables(expr2)
+		elif node_type == "dot_accessor":
+			expr, dot_access_name = Matcher.match_with(ast,
+				("dot_accessor", [
+					tuple,
+					("identifier", str),
+				]))
+			return self.compute_free_variables(expr)
 		elif node_type in ["integer"]:
 			return set()
 		raise ValueError("Unhandled node type: %r" % (node_type,))
@@ -282,6 +289,15 @@ class ClCompiler:
 			self.generate_bytecode_for_expr(expr1, ctx)
 			self.generate_bytecode_for_expr(expr2, ctx)
 			ctx.append("CALL")
+		elif node_type == "dot_accessor":
+			sub_expr, dot_access_name = Matcher.match_with(expr,
+				("dot_accessor", [
+					tuple,
+					("identifier", str),
+				]))
+			self.generate_bytecode_for_expr(sub_expr, ctx)
+			print "Values:", `dot_access_name`
+			ctx.append("DOT_ACCESS %s" % dot_access_name.encode("hex"))
 		elif node_type == "binary":
 			expr1, operation_class, operation, expr2 = Matcher.match_with(expr,
 				("binary", [
@@ -412,6 +428,7 @@ def source_to_bytecode(source):
 	compiler = ClCompiler()
 	ast = parser.parse(source)
 	bytecode_text = compiler.generate_overall_bytecode(ast)
+	print "Bytecode text:", bytecode_text
 	assembly_unit = assemble.make_assembly_unit(bytecode_text)
 	bytecode = assemble.assemble(assembly_unit)
 	return bytecode
@@ -429,6 +446,8 @@ end
 five_adder = build_adder ([5])
 
 print five_adder ([7])
+
+print 5.to_string 3
 
 #def factorial y
 #	accum = 1

@@ -143,7 +143,17 @@ ClContext::ClContext() {
 	data_ctx = new ClDataContext();
 
 	// Populate the methods for the basic types.
-//	data_ctx->default_type_tables[CL_NIL]["to_string"] = clbuiltins_nil_to_string;
+	ClFunction* f;
+#define ASSIGN(kind, name, function) \
+	f = new ClFunction(); \
+	data_ctx->register_permanent_object(f); \
+	f->native_executable_content = function; \
+	data_ctx->default_type_tables[kind][name] = f;
+
+	ASSIGN(CL_NIL, "to_string", cl_builtin_nil_to_string)
+	ASSIGN(CL_INT, "to_string", cl_builtin_int_to_string)
+	ASSIGN(CL_BOOL, "to_string", cl_builtin_bool_to_string)
+	ASSIGN(CL_LIST, "to_string", cl_builtin_list_to_string)
 }
 
 static ClObj* pop(vector<ClObj*>& stack) {
@@ -259,36 +269,14 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 			case OPCODE_INDEX("CALL"): {
 				// First we pop the function argument off the stack.
 				// We do not decrement the ref count yet, because this could cause it to be prematurely collected.
-				// However, once we insert into the child scope below it becomes safe to decrement.
 				ClObj* function_argument = pop(stack);
 				// Now we pop the actual function off the stack.
 				// We will decrement the ref count on this function, but only once we're done evaluating everything.
-				ClFunction* function_obj = assert_kind<ClFunction>(pop(stack));
-				// Declare a return value, that the following code will fill.
-				ClObj* return_value;
-				// We now do an important case check, to determin if function_obj is a native function, or Cl function.
-				// If it's a Cl function, then function_obj->native_executable_content is nullptr.
-				// If it's native, then function_obj->native_executable_content is a ClObj* (*)(ClObj* argument) pointing to the code.
-				if (function_obj->native_executable_content != nullptr) {
-					// === Native function call ===
-					return_value = function_obj->native_executable_content(function_obj, function_argument);
-					stack.push_back(return_value);
-				} else {
-					// === Cl (non-native) function call ===
-					// We duplicate the function closure to get a scope to execute in.
-					// Note that we neither register nor set the ref count on this record, because we're about to throw it away.
-					ClRecord* child_scope = function_obj->closure->duplicate();
-					// We set the magic value 0 in the child_scope to be the passed in argument.
-					child_scope->store(0, function_argument);
-					// Now that this child scope has ownership over the argument it is safe to decrement our reference count.
-					function_argument->dec_ref();
-					// Do execution!
-					return_value = execute(child_scope, function_obj->executable_content);
-					// By deleting the child scope we effectively decrement the ref count on function_argument, completing our obligation.
-					delete child_scope;
-				}
-				// Now that execution of the call is over, it is safe to decerement the ref count on function_obj.
-				function_obj->dec_ref();
+				ClObj* supposed_function = pop(stack);
+				ClObj* return_value = cl_perform_function_call(this, supposed_function, function_argument);
+				// Now that execution of the call is over, it is safe to decerement the ref count on the function and argument.
+				supposed_function->dec_ref();
+				function_argument->dec_ref();
 				// We push the return value onto our stack and do NOT increment the reference count, because
 				// the reference count was never decremented when the object was popped off the callee's stack.
 				stack.push_back(return_value);
@@ -304,6 +292,14 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 				ClList* list = static_cast<ClList*>(possibly_list);
 				list->contents.push_back(new_item);
 				// There is no need to adjust reference counts, because new_item was moved off the stack and into a list.
+				break;
+			}
+			case OPCODE_INDEX("DOT_ACCESS"): {
+				ClObj* obj = pop(stack);
+				ClObj* result = cl_lookup_in_object_table(obj, instruction.data_field);
+				// We don't need to increment result's ref count, because cl_lookup_in_object_table does it for us.
+				obj->dec_ref();
+				stack.push_back(result);
 				break;
 			}
 #define BINARY_OPERATION(name, func) \

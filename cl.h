@@ -46,6 +46,7 @@ constexpr ClOpcodeDesc cl_opcode_descs[] = {
 	ClOpcodeDesc({"MAKE_FUNCTION",  0,  1, true }),
 	ClOpcodeDesc({"CALL",           0, -1, false}),
 	ClOpcodeDesc({"LIST_APPEND",    0, -1, false}),
+	ClOpcodeDesc({"DOT_ACCESS",     0,  0, true }),
 	ClOpcodeDesc({"BINARY_PLUS",    0, -1, false}),
 	ClOpcodeDesc({"BINARY_MINUS",   0, -1, false}),
 	ClOpcodeDesc({"BINARY_TIMES",   0, -1, false}),
@@ -152,8 +153,13 @@ public:
 };
 
 bool cl_coerce_to_boolean(ClObj* obj);
-ClObj* cl_perform_function_call(ClObj* supposed_function, ClObj* argument);
+ClObj* cl_perform_function_call(ClContext* ctx, ClObj* supposed_function, ClObj* argument);
 ClObj* cl_lookup_in_object_table(ClObj* object, const std::string& name);
+
+ClObj* cl_builtin_nil_to_string(ClFunction* this_function, ClObj* argument);
+ClObj* cl_builtin_int_to_string(ClFunction* this_function, ClObj* argument);
+ClObj* cl_builtin_bool_to_string(ClFunction* this_function, ClObj* argument);
+ClObj* cl_builtin_list_to_string(ClFunction* this_function, ClObj* argument);
 
 // Our C API.
 extern "C" {

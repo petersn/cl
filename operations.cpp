@@ -173,14 +173,42 @@ bool cl_coerce_to_boolean(ClObj* obj) {
 	}
 }
 
-ClObj* cl_perform_function_call(ClObj* supposed_function, ClObj* argument) {
-	// TODO.
-	return nullptr;
+ClObj* cl_perform_function_call(ClContext* ctx, ClObj* supposed_function, ClObj* argument) {
+	ClFunction* function_obj = assert_kind<ClFunction>(supposed_function);
+	ClObj* return_value;
+	// We now do an important case check, to determine if function_obj is a native function, or Cl function.
+	// If it's a Cl function, then function_obj->native_executable_content is nullptr.
+	// If it's native, then function_obj->native_executable_content is a ClObj* (*)(ClObj* argument) pointing to the code.
+	if (function_obj->native_executable_content != nullptr) {
+		// === Native function call ===
+		return_value = function_obj->native_executable_content(function_obj, argument);
+	} else {
+		// === Cl (non-native) function call ===
+		// We duplicate the function closure to get a scope to execute in.
+		// Note that we neither register nor set the ref count on this record, because we're about to throw it away.
+		ClRecord* child_scope = function_obj->closure->duplicate();
+		// We set the magic value 0 in the child_scope to be the passed in argument.
+		child_scope->store(0, argument);
+		// Do execution!
+		return_value = ctx->execute(child_scope, function_obj->executable_content);
+		// By deleting the child scope we effectively decrement the ref count on argument, completing our obligation.
+		delete child_scope;
+	}
+	return return_value;
 }
 
 ClObj* cl_lookup_in_object_table(ClObj* object, const string& name) {
-	// TODO.
-	return nullptr;
+	const unordered_map<string, ClObj*>& object_table = object->parent->default_type_tables[object->kind];
+	auto result = object_table.find(name);
+	if (result == object_table.end()) {
+		// This increment is correct and necessary.
+		object->parent->nil->inc_ref();
+		return object->parent->nil;
+	}
+	// Otherwise, increment the reference count and return the object we got.
+	ClObj* result_obj = (*result).second;
+	result_obj->inc_ref();
+	return result_obj;
 }
 
 // ===== Built-in functions =====

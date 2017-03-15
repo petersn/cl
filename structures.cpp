@@ -14,6 +14,8 @@ std::ostream& operator << (std::ostream& os, const ClObj& obj) {
 void ClObj::dec_ref() {
 	ref_count--;
 	if (ref_count <= 0) {
+		if (ref_count < 0)
+			cout << "ERROR! Negative reference count on: " << cl_kind_to_name[kind] << " of " << ref_count << endl;
 		parent->objects.erase(this);
 		delete this;
 	}
@@ -151,7 +153,7 @@ ClFunction::~ClFunction() {
 }
 
 void ClFunction::pprint(ostream& os) const {
-	os << "Function_" << executable_content->instructions.size();
+	os << "Function";
 }
 
 ClFunction* ClFunction::produce_bound_method(ClObj* object_who_has_method) {
@@ -169,11 +171,13 @@ ClFunction* ClFunction::produce_bound_method(ClObj* object_who_has_method) {
 ClDataContext::ClDataContext() {
 	// Statically allocate a nil object.
 	nil = new ClNil();
+	register_permanent_object(nil);
 	static_booleans[0] = new ClBool();
 	static_booleans[0]->truth_value = false;
+	register_permanent_object(static_booleans[0]);
 	static_booleans[1] = new ClBool();
 	static_booleans[1]->truth_value = true;
-	// We explicitly do NOT register the above, so they won't get garbage collected.
+	register_permanent_object(static_booleans[1]);
 
 	// We now build an array of default lookup tables for our default types.
 	default_type_tables = new unordered_map<string, ClObj*>[CL_KIND_COUNT];
@@ -182,6 +186,11 @@ ClDataContext::ClDataContext() {
 ClObj* ClDataContext::register_object(ClObj* obj) {
 	obj->parent = this;
 	objects.insert(obj);
+	return obj;
+}
+
+ClObj* ClDataContext::register_permanent_object(ClObj* obj) {
+	obj->parent = this;
 	return obj;
 }
 
