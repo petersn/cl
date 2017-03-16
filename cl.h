@@ -160,6 +160,7 @@ ClObj* cl_builtin_nil_to_string(ClFunction* this_function, ClObj* argument);
 ClObj* cl_builtin_int_to_string(ClFunction* this_function, ClObj* argument);
 ClObj* cl_builtin_bool_to_string(ClFunction* this_function, ClObj* argument);
 ClObj* cl_builtin_list_to_string(ClFunction* this_function, ClObj* argument);
+ClObj* cl_builtin_list_append(ClFunction* this_function, ClObj* argument);
 
 // Our C API.
 extern "C" {

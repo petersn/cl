@@ -88,6 +88,7 @@ struct ClList : public ClObj {
 };
 
 struct ClRecord : public ClObj {
+	// NB: If you add members here, patch up ClRecord::duplicate to copy them over!
 	// XXX: TODO: Make a decision as to what type to use for these. Probably just plain int?
 	cl_int_t distinguisher;
 	cl_int_t length;
@@ -119,11 +120,13 @@ struct ClString : public ClObj {
 };
 
 struct ClFunction : public ClObj {
+	// NB: If you add members here, patch up ClFunction::produce_bound_method to copy them over!
 	// Every function consists of an executable content...
-	ClInstructionSequence* executable_content;
+	ClInstructionSequence* executable_content = nullptr;
 	// ... and a record for the local closure.
-	ClRecord* closure;
-	// Finally, when pulling out bound methods we generate a closed_this.
+	ClRecord* closure = nullptr;
+	// Finally, when pulling out methods we generate a closed_this, forming a bound method.
+	bool is_method = false;
 	ClObj* closed_this = nullptr;
 	// Function pointer for implementing native functions.
 	ClObj* (*native_executable_content)(ClFunction* this_function, ClObj* argument) = nullptr;
@@ -138,6 +141,8 @@ struct ClDataContext {
 	std::unordered_set<ClObj*> objects;
 	ClNil* nil;
 	ClBool* static_booleans[2];
+	int64_t objects_registered;
+	int64_t objects_freed;
 
 	std::unordered_map<std::string, ClObj*>* default_type_tables;
 

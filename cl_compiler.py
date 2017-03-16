@@ -443,11 +443,15 @@ def build_adder x
 	return the_adder
 end
 
-five_adder = build_adder([5])
+#five_adder = build_adder([5])
+#print five_adder([7])
+#print 5.to_string(nil)
 
-print five_adder([7])
-
-print 5.to_string(nil)
+l = []
+l.append(1)
+l.append(2)
+l.append(3)
+print l
 
 #def factorial y
 #	accum = 1

@@ -147,6 +147,7 @@ ClContext::ClContext() {
 #define ASSIGN(kind, name, function) \
 	f = new ClFunction(); \
 	data_ctx->register_permanent_object(f); \
+	f->is_method = true; \
 	f->native_executable_content = function; \
 	data_ctx->default_type_tables[kind][name] = f;
 
@@ -154,6 +155,8 @@ ClContext::ClContext() {
 	ASSIGN(CL_INT, "to_string", cl_builtin_int_to_string)
 	ASSIGN(CL_BOOL, "to_string", cl_builtin_bool_to_string)
 	ASSIGN(CL_LIST, "to_string", cl_builtin_list_to_string)
+
+	ASSIGN(CL_LIST, "append", cl_builtin_list_append)
 }
 
 static ClObj* pop(vector<ClObj*>& stack) {
@@ -297,6 +300,12 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 			case OPCODE_INDEX("DOT_ACCESS"): {
 				ClObj* obj = pop(stack);
 				ClObj* result = cl_lookup_in_object_table(obj, instruction.data_field);
+				// If the resultant object is a method, then bind it.
+				// XXX: TODO: Check ref counting.
+				if (result->kind == CL_FUNCTION && static_cast<ClFunction*>(result)->is_method) {
+					result = static_cast<ClFunction*>(result)->produce_bound_method(obj);
+					data_ctx->register_object(result);
+				}
 				// We don't need to increment result's ref count, because cl_lookup_in_object_table does it for us.
 				obj->dec_ref();
 				stack.push_back(result);
@@ -422,5 +431,6 @@ extern "C" void cl_execute_string(const char* input, int length) {
 	// Check nil's reference count.
 	if (ctx->data_ctx->nil->ref_count != 1)
 		cout << "WARNING: Ref count on nil not one: " << ctx->data_ctx->nil->ref_count << endl;
+//	cout << "Registered: " << ctx->data_ctx->objects_registered << " Freed: " << ctx->data_ctx->objects_freed << endl;
 }
 

@@ -222,7 +222,9 @@ ClObj* cl_builtin_nil_to_string(ClFunction* this_function, ClObj* _argument) {
 }
 
 ClObj* cl_builtin_int_to_string(ClFunction* this_function, ClObj* _argument) {
-	ClInt* argument = assert_kind<ClInt>(_argument);
+	assert_kind<ClNil>(_argument);
+
+	ClInt* argument = assert_kind<ClInt>(this_function->closed_this);
 	ClString* result = new ClString();
 	this_function->parent->register_object(result);
 	result->contents = to_string(argument->value);
@@ -230,7 +232,9 @@ ClObj* cl_builtin_int_to_string(ClFunction* this_function, ClObj* _argument) {
 }
 
 ClObj* cl_builtin_bool_to_string(ClFunction* this_function, ClObj* _argument) {
-	ClBool* argument = assert_kind<ClBool>(_argument);
+	assert_kind<ClNil>(_argument);
+
+	ClBool* argument = assert_kind<ClBool>(this_function->closed_this);
 	ClString* result = new ClString();
 	this_function->parent->register_object(result);
 	if (argument->truth_value)
@@ -241,7 +245,9 @@ ClObj* cl_builtin_bool_to_string(ClFunction* this_function, ClObj* _argument) {
 }
 
 ClObj* cl_builtin_list_to_string(ClFunction* this_function, ClObj* _argument) {
-	ClList* argument = assert_kind<ClList>(_argument);
+	assert_kind<ClNil>(_argument);
+
+	ClList* argument = assert_kind<ClList>(this_function->closed_this);
 	ClString* result = new ClString();
 	this_function->parent->register_object(result);
 	stringstream ss;
@@ -257,5 +263,15 @@ ClObj* cl_builtin_list_to_string(ClFunction* this_function, ClObj* _argument) {
 	ss << "]";
 	result->contents = ss.str();
 	return result;
+}
+
+ClObj* cl_builtin_list_append(ClFunction* this_function, ClObj* argument) {
+	ClList* this_list = assert_kind<ClList>(this_function->closed_this);
+	this_list->contents.push_back(argument);
+	// Must double increment reference when returning.
+	// Once because we've stored the object in the list, and once because we're returning it.
+	argument->inc_ref();
+	argument->inc_ref();
+	return argument;
 }
 

@@ -14,9 +14,13 @@ std::ostream& operator << (std::ostream& os, const ClObj& obj) {
 void ClObj::dec_ref() {
 	ref_count--;
 	if (ref_count <= 0) {
-		if (ref_count < 0)
-			cout << "ERROR! Negative reference count on: " << cl_kind_to_name[kind] << " of " << ref_count << endl;
+		if (ref_count < 0) {
+			cout << "ERROR! Negative reference count on: kind=" << kind << " of refs=" << ref_count << endl;
+			cout << "(Both that kind and ref-count should be taken with a" << endl;
+			cout << "grain of salt, as they were reading a freed buffer.)" << endl;
+		}
 		parent->objects.erase(this);
+		parent->objects_freed++;
 		delete this;
 	}
 }
@@ -144,7 +148,8 @@ void ClString::pprint(ostream& os) const {
 ClFunction::~ClFunction() {
 	// We need to not delete executable_context, because it is owned by the bytecode compiler, and can be shared with other ClFunctions.
 	// However, our closure should have its reference decremented.
-	closure->dec_ref();
+	if (closure != nullptr)
+		closure->dec_ref();
 	// In the current implementation this should ALWAYS cause the closure to be collected, but maybe later it'll be possible to extract this ClRecord?
 
 	// We also need to decrement the reference count of the closed this pointer, if we're a bound method.
@@ -160,15 +165,20 @@ ClFunction* ClFunction::produce_bound_method(ClObj* object_who_has_method) {
 	auto bound_method = new ClFunction();
 	bound_method->executable_content = executable_content;
 	bound_method->closure = closure;
-	closure->inc_ref();
+	// We set is_method to false, to indicate that further pulling from an object shouldn't produce method binding.
+	bound_method->is_method = false;
+	if (closure != nullptr)
+		closure->inc_ref();
 	bound_method->closed_this = object_who_has_method;
+	bound_method->native_executable_content = native_executable_content;
+
 	object_who_has_method->inc_ref();
 	return bound_method;
 }
 
 // ===== ClDataContext =====
 
-ClDataContext::ClDataContext() {
+ClDataContext::ClDataContext() : objects_registered(0), objects_freed(0) {
 	// Statically allocate a nil object.
 	nil = new ClNil();
 	register_permanent_object(nil);
@@ -186,6 +196,7 @@ ClDataContext::ClDataContext() {
 ClObj* ClDataContext::register_object(ClObj* obj) {
 	obj->parent = this;
 	objects.insert(obj);
+	objects_registered++;
 	return obj;
 }
 
