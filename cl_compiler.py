@@ -165,10 +165,10 @@ class ClCompiler:
 			self.indent = indent
 
 		def load(self, var):
-			self.append("LOAD %i" % self.variable_table.index(var))
+			self.append("LOAD %i    # %s" % (self.variable_table.index(var), var))
 
 		def store(self, var):
-			self.append("STORE %i" % self.variable_table.index(var))
+			self.append("STORE %i   # %s" % (self.variable_table.index(var), var))
 
 		def append(self, x):
 			for part in x.split("\n"):
@@ -297,7 +297,7 @@ class ClCompiler:
 				]))
 			self.generate_bytecode_for_expr(sub_expr, ctx)
 			print "Values:", `dot_access_name`
-			ctx.append("DOT_ACCESS %s" % dot_access_name.encode("hex"))
+			ctx.append("DOT_ACCESS \"%s\"" % dot_access_name)
 		elif node_type == "binary":
 			expr1, operation_class, operation, expr2 = Matcher.match_with(expr,
 				("binary", [
@@ -443,11 +443,11 @@ def build_adder x
 	return the_adder
 end
 
-five_adder = build_adder ([5])
+five_adder = build_adder([5])
 
-print five_adder ([7])
+print five_adder([7])
 
-print 5.to_string 3
+print 5.to_string(nil)
 
 #def factorial y
 #	accum = 1

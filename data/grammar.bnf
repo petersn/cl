@@ -4,7 +4,8 @@
 variable ::= identifier::
 lambda ::= "\"~ identifier:: "->"~ expr_p7
 
-function_call ::= expr_p6 expr_p9 // expr_p8
+// Used to be expr_p6 expr_p9
+function_call ::= expr_p6 "("~ expr ")"~ // expr_p8
 let_in ::= "let"~ identifier:: "="~ expr "in"~ expr
 indexing ::= expr_p9 "["~ expr "]"~
 dot_accessor ::= expr_p9 "."~ identifier::
