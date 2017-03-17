@@ -185,6 +185,12 @@ class ClCompiler:
 				out.append(entry)
 		return out
 
+	@staticmethod
+	def decode_string_constant(s):
+		assert s.startswith('"') and s.endswith('"')
+		# TODO: Handle escapes here.
+		return s[1:-1]
+
 	def compute_free_variables(self, ast):
 		# For lists, union over entries.
 		if isinstance(ast, list):
@@ -220,7 +226,7 @@ class ClCompiler:
 					]))
 				ast.args_variables = self.compute_free_variables(ast.args_seq)
 				return set([ast.function_name])
-			elif node_type in ("while_block", "if_block"):
+			elif node_type in ("while_block", "if_block", "for_block"):
 				return self.compute_free_variables(ast.ast[1]) | self.compute_free_variables(ast.block)
 			raise ValueError("Unhandled syntax element type: %r" % (ast.ast,))
 
@@ -261,7 +267,14 @@ class ClCompiler:
 					("identifier", str),
 				]))
 			return self.compute_free_variables(expr)
-		elif node_type in ["integer"]:
+		elif node_type == "list_comp_group":
+			list_comp_var, expr = Matcher.match_with(ast,
+				("list_comp_group", [
+					("identifier", str),
+					tuple,
+				]))
+			return set([list_comp_var]) | self.compute_free_variables(expr)
+		elif node_type in ["integer", "string"]:
 			return set()
 		raise ValueError("Unhandled node type: %r" % (node_type,))
 
@@ -274,7 +287,8 @@ class ClCompiler:
 			if literal_class == "integer":
 				ctx.append("MAKE_INT %i" % int(literal_value))
 			elif literal_class == "string":
-				ctx.append("MAKE_STRING %s" % literal_value.encode("hex"))
+				string_spec = ClCompiler.decode_string_constant(literal_value).encode("hex")
+				ctx.append("MAKE_STRING %s" % string_spec)
 			elif literal_class == "identifier":
 				ctx.load(literal_value)
 			else:
@@ -296,7 +310,6 @@ class ClCompiler:
 					("identifier", str),
 				]))
 			self.generate_bytecode_for_expr(sub_expr, ctx)
-			print "Values:", `dot_access_name`
 			ctx.append("DOT_ACCESS \"%s\"" % dot_access_name)
 		elif node_type == "binary":
 			expr1, operation_class, operation, expr2 = Matcher.match_with(expr,
@@ -376,6 +389,30 @@ class ClCompiler:
 				if syntax_elem.kind == "while_block":
 					ctx.append("JUMP %s" % top_label)
 				ctx.append("%s:" % bottom_label)
+			elif syntax_elem.kind == "for_block":
+				# Make a label for breaking out of the loop.
+				list_comp_var, expr = Matcher.match_with(syntax_elem.ast,
+					("for_block", [
+						("list_comp_group", [
+							("identifier", str),
+							tuple,
+						])
+					]))
+				top_label = self.new_label()
+				done_iterating_label = self.new_label()
+				# Generate the iterator object, then iterate over it.
+				self.generate_bytecode_for_expr(expr, ctx)
+				ctx.append("DOT_ACCESS \"iter\"")
+				ctx.append("%s:" % top_label)
+				ctx.append("ITERATE %s" % done_iterating_label)
+				# Then assign the yielded value into the iteration variable.
+				ctx.store(list_comp_var)
+				# Perform the block.
+				self.generate_bytecode_for_seq(syntax_elem.block, ctx)
+				ctx.append("JUMP %s" % top_label)
+				ctx.append("%s:" % done_iterating_label)
+				# Drop the iterator object that just returned a ClStopIteration.
+				ctx.append("POP")
 			elif syntax_elem.kind == "function_definition":
 				# Generate an appropriate closure.
 				# The full inner variable table is just all the free variables used inside.
@@ -428,7 +465,7 @@ def source_to_bytecode(source):
 	compiler = ClCompiler()
 	ast = parser.parse(source)
 	bytecode_text = compiler.generate_overall_bytecode(ast)
-	print "Bytecode text:", bytecode_text
+#	print "Bytecode text:", bytecode_text
 	assembly_unit = assemble.make_assembly_unit(bytecode_text)
 	bytecode = assemble.assemble(assembly_unit)
 	return bytecode
@@ -448,10 +485,11 @@ end
 #print 5.to_string(nil)
 
 l = []
-l.append(1)
-l.append(2)
+l.append("foo"); l.append(2)
 l.append(3)
-print l
+for i <- l
+	print i
+end
 
 #def factorial y
 #	accum = 1

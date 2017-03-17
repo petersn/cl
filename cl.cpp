@@ -157,6 +157,7 @@ ClContext::ClContext() {
 	ASSIGN(CL_LIST, "to_string", cl_builtin_list_to_string)
 
 	ASSIGN(CL_LIST, "append", cl_builtin_list_append)
+	ASSIGN(CL_LIST, "iter", cl_builtin_list_iter)
 }
 
 static ClObj* pop(vector<ClObj*>& stack) {
@@ -277,12 +278,38 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 				// We will decrement the ref count on this function, but only once we're done evaluating everything.
 				ClObj* supposed_function = pop(stack);
 				ClObj* return_value = cl_perform_function_call(this, supposed_function, function_argument);
+				if (return_value->kind == CL_STOP_ITERATION)
+					cl_crash("Stop iteration outside of looping context.");
 				// Now that execution of the call is over, it is safe to decerement the ref count on the function and argument.
 				supposed_function->dec_ref();
 				function_argument->dec_ref();
 				// We push the return value onto our stack and do NOT increment the reference count, because
 				// the reference count was never decremented when the object was popped off the callee's stack.
 				stack.push_back(return_value);
+				break;
+			}
+			case OPCODE_INDEX("ITERATE"): {
+				if (stack.size() == 0)
+					cl_crash("Stack underflow.");
+				ClObj* iterator = stack.back();
+				// The nil inc_ref/dec_ref pair here is probably not necessary, but makes us strictly follow our protocol.
+				data_ctx->nil->inc_ref();
+				ClObj* return_value = cl_perform_function_call(this, iterator, data_ctx->nil);
+				data_ctx->nil->dec_ref();
+				// If the value is a ClStopIteration, then jump to the target.
+				if (return_value->kind == CL_STOP_ITERATION) {
+					instruction_pointer = instruction.args[0];
+					return_value->dec_ref();
+				} else {
+					// Otherwise, push the iteration value onto the stack.
+					stack.push_back(return_value);
+				}
+				break;
+			}
+			case OPCODE_INDEX("STOP_ITERATION"): {
+				data_ctx->stop_iteration->inc_ref();
+				stack.push_back(data_ctx->stop_iteration);
+				instruction_pointer = seq->instructions.size();
 				break;
 			}
 			case OPCODE_INDEX("LIST_APPEND"): {
@@ -429,8 +456,11 @@ extern "C" void cl_execute_string(const char* input, int length) {
 		}
 	}
 	// Check nil's reference count.
+	// TODO: Iterate over register_permanent_object objects.
 	if (ctx->data_ctx->nil->ref_count != 1)
 		cout << "WARNING: Ref count on nil not one: " << ctx->data_ctx->nil->ref_count << endl;
+	if (ctx->data_ctx->stop_iteration->ref_count != 1)
+		cout << "WARNING: Ref count on stop iteration not one: " << ctx->data_ctx->stop_iteration->ref_count << endl;
 //	cout << "Registered: " << ctx->data_ctx->objects_registered << " Freed: " << ctx->data_ctx->objects_freed << endl;
 }
 

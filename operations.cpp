@@ -201,9 +201,13 @@ ClObj* cl_lookup_in_object_table(ClObj* object, const string& name) {
 	const unordered_map<string, ClObj*>& object_table = object->parent->default_type_tables[object->kind];
 	auto result = object_table.find(name);
 	if (result == object_table.end()) {
-		// This increment is correct and necessary.
-		object->parent->nil->inc_ref();
-		return object->parent->nil;
+		string message = "No attribute \"";
+		message += name;
+		message += "\" found.";
+		cl_crash(message);
+//		// This increment is correct and necessary.
+//		object->parent->nil->inc_ref();
+//		return object->parent->nil;
 	}
 	// Otherwise, increment the reference count and return the object we got.
 	ClObj* result_obj = (*result).second;
@@ -273,5 +277,24 @@ ClObj* cl_builtin_list_append(ClFunction* this_function, ClObj* argument) {
 	argument->inc_ref();
 	argument->inc_ref();
 	return argument;
+}
+
+ClObj* cl_builtin_list_iter(ClFunction* this_function, ClObj* argument) {
+	assert_kind<ClNil>(argument);
+	ClList* this_list = assert_kind<ClList>(this_function->closed_this);
+	// We interpret the native cache as an int64_t, which we use as an index into the list.
+	uint64_t& iteration_index = *reinterpret_cast<uint64_t*>(&this_function->native_executable_cache);
+
+	// If we're done iterating, then note so.
+	if (iteration_index >= this_list->contents.size()) {
+		ClStopIteration* stop_iteration = this_function->parent->stop_iteration;
+		stop_iteration->inc_ref();
+		return stop_iteration;
+	}
+
+	// Otherwise, return the next value in line.
+	ClObj* obj = this_list->contents[iteration_index++];
+	obj->inc_ref();
+	return obj;
 }
 

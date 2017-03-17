@@ -64,12 +64,14 @@ raw_expr:expr ::= expr_p0
 // Define the block forming constructions.
 if_block ::= "if"~ expr
 while_block ::= "while"~ expr
-for_block ::= "for"~ list_comp_groups
+for_block ::= "for"~ list_comp_group
+class_block ::= "class"~ identifier
 
 block_forming% ::= function_definition
 block_forming% ::= if_block
 block_forming% ::= while_block
 block_forming% ::= for_block
+block_forming% ::= class_block
 
 assignment ::= identifier:: "="~ expr
 return ::= "return"~ | "return"~ expr

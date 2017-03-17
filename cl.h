@@ -45,6 +45,8 @@ constexpr ClOpcodeDesc cl_opcode_descs[] = {
 	ClOpcodeDesc({"MAKE_STRING",    0,  1, true }),
 	ClOpcodeDesc({"MAKE_FUNCTION",  0,  1, true }),
 	ClOpcodeDesc({"CALL",           0, -1, false}),
+	ClOpcodeDesc({"ITERATE",        1,  0, false}),
+	ClOpcodeDesc({"STOP_ITERATION", 0,  0, false}),
 	ClOpcodeDesc({"LIST_APPEND",    0, -1, false}),
 	ClOpcodeDesc({"DOT_ACCESS",     0,  0, true }),
 	ClOpcodeDesc({"BINARY_PLUS",    0, -1, false}),
@@ -161,6 +163,7 @@ ClObj* cl_builtin_int_to_string(ClFunction* this_function, ClObj* argument);
 ClObj* cl_builtin_bool_to_string(ClFunction* this_function, ClObj* argument);
 ClObj* cl_builtin_list_to_string(ClFunction* this_function, ClObj* argument);
 ClObj* cl_builtin_list_append(ClFunction* this_function, ClObj* argument);
+ClObj* cl_builtin_list_iter(ClFunction* this_function, ClObj* argument);
 
 // Our C API.
 extern "C" {

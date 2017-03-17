@@ -3,7 +3,7 @@
 
 escaped_newline~ = \\\n
 comment~         = #.*
-keyword          = (def|if|else|for|while|return|end|print)(?!['a-zA-Z_])
+keyword          = (def|if|else|for|while|class|return|end|print)(?!['a-zA-Z_])
 op_group_logic   = (and|or)(?!['a-zA-Z_])
 reserved         = \\|->
 open_paren       = [(]
@@ -21,7 +21,7 @@ op_group_compare = <=|>=|<|>|==|!=
 integer          = [0-9]+
 string           = "(\\.|[^"\\])*"
 identifier       = [a-zA-Z_][a-zA-Z0-9_]*
-newline          = \n
+newline          = \n|;
 whitespace~      = [ ]+|\t+
 symbol           = .
 

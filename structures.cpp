@@ -171,9 +171,16 @@ ClFunction* ClFunction::produce_bound_method(ClObj* object_who_has_method) {
 		closure->inc_ref();
 	bound_method->closed_this = object_who_has_method;
 	bound_method->native_executable_content = native_executable_content;
+	bound_method->native_executable_cache = native_executable_cache;
 
 	object_who_has_method->inc_ref();
 	return bound_method;
+}
+
+// ===== ClStopIteration =====
+
+void ClStopIteration::pprint(ostream& os) const {
+	os << "StopIteration (There should be no non-debugging way to print this object.)";
 }
 
 // ===== ClDataContext =====
@@ -188,6 +195,8 @@ ClDataContext::ClDataContext() : objects_registered(0), objects_freed(0) {
 	static_booleans[1] = new ClBool();
 	static_booleans[1]->truth_value = true;
 	register_permanent_object(static_booleans[1]);
+	stop_iteration = new ClStopIteration();
+	register_permanent_object(stop_iteration);
 
 	// We now build an array of default lookup tables for our default types.
 	default_type_tables = new unordered_map<string, ClObj*>[CL_KIND_COUNT];

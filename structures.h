@@ -29,6 +29,7 @@ enum ClKind {
 	CL_MAP,
 	CL_STRING,
 	CL_FUNCTION,
+	CL_STOP_ITERATION,
 	CL_KIND_COUNT,
 };
 
@@ -41,6 +42,7 @@ const char* const cl_kind_to_name[CL_KIND_COUNT] = {
 	"Map",
 	"String",
 	"Function",
+	"StopIteration",
 };
 
 struct ClObj {
@@ -130,6 +132,7 @@ struct ClFunction : public ClObj {
 	ClObj* closed_this = nullptr;
 	// Function pointer for implementing native functions.
 	ClObj* (*native_executable_content)(ClFunction* this_function, ClObj* argument) = nullptr;
+	void* native_executable_cache = nullptr;
 
 	virtual ~ClFunction();
 	ClFunction() : ClObj(CL_FUNCTION) {}
@@ -137,10 +140,16 @@ struct ClFunction : public ClObj {
 	ClFunction* produce_bound_method(ClObj* object_who_has_method);
 };
 
+struct ClStopIteration : public ClObj {
+	ClStopIteration() : ClObj(CL_STOP_ITERATION) {}
+	virtual void pprint(std::ostream& os) const;
+};
+
 struct ClDataContext {
 	std::unordered_set<ClObj*> objects;
 	ClNil* nil;
 	ClBool* static_booleans[2];
+	ClStopIteration* stop_iteration;
 	int64_t objects_registered;
 	int64_t objects_freed;
 
@@ -157,14 +166,15 @@ namespace cl_template_trickery {
 	// Here we use a specialized template to allow users to look up the corresponding ClKind to a given ClObj subclass.
 	template <typename T> struct get_kind {};
 
-	template <> struct get_kind<ClNil>      { constexpr static ClKind kind = CL_NIL; };
-	template <> struct get_kind<ClInt>      { constexpr static ClKind kind = CL_INT; };
-	template <> struct get_kind<ClBool>     { constexpr static ClKind kind = CL_BOOL; };
-	template <> struct get_kind<ClList>     { constexpr static ClKind kind = CL_LIST; };
-	template <> struct get_kind<ClRecord>   { constexpr static ClKind kind = CL_RECORD; };
-	template <> struct get_kind<ClMap>      { constexpr static ClKind kind = CL_MAP; };
-	template <> struct get_kind<ClString>   { constexpr static ClKind kind = CL_STRING; };
-	template <> struct get_kind<ClFunction> { constexpr static ClKind kind = CL_FUNCTION; };
+	template <> struct get_kind<ClNil>           { constexpr static ClKind kind = CL_NIL; };
+	template <> struct get_kind<ClInt>           { constexpr static ClKind kind = CL_INT; };
+	template <> struct get_kind<ClBool>          { constexpr static ClKind kind = CL_BOOL; };
+	template <> struct get_kind<ClList>          { constexpr static ClKind kind = CL_LIST; };
+	template <> struct get_kind<ClRecord>        { constexpr static ClKind kind = CL_RECORD; };
+	template <> struct get_kind<ClMap>           { constexpr static ClKind kind = CL_MAP; };
+	template <> struct get_kind<ClString>        { constexpr static ClKind kind = CL_STRING; };
+	template <> struct get_kind<ClFunction>      { constexpr static ClKind kind = CL_FUNCTION; };
+	template <> struct get_kind<ClStopIteration> { constexpr static ClKind kind = CL_STOP_ITERATION; };
 }
 
 template <typename T>

@@ -123,7 +123,7 @@ def assemble(assembly_unit):
 		output.append(chr(opcode_description["index"]))
 
 		# If we're a jump, do special handling to compute our argument.
-		is_jump = op["name"] in ["JUMP", "JUMP_IF_TRUTHY", "JUMP_IF_FALSEY"]
+		is_jump = op["name"] in ["JUMP", "JUMP_IF_TRUTHY", "JUMP_IF_FALSEY", "ITERATE"]
 		if is_jump:
 			op["args"] = map(assembly_unit.labels.__getitem__, op["args"])
 
