@@ -141,23 +141,40 @@ void cl_crash(string message) {
 
 ClContext::ClContext() {
 	data_ctx = new ClDataContext();
-
-	// Populate the methods for the basic types.
 	ClFunction* f;
-#define ASSIGN(kind, name, function) \
+
+#define MAKE_METHOD(kind, name, function) \
 	f = new ClFunction(); \
 	data_ctx->register_permanent_object(f); \
 	f->is_method = true; \
 	f->native_executable_content = function; \
 	data_ctx->default_type_tables[kind][name] = f;
 
-	ASSIGN(CL_NIL, "to_string", cl_builtin_nil_to_string)
-	ASSIGN(CL_INT, "to_string", cl_builtin_int_to_string)
-	ASSIGN(CL_BOOL, "to_string", cl_builtin_bool_to_string)
-	ASSIGN(CL_LIST, "to_string", cl_builtin_list_to_string)
+#define MAKE_GLOBAL(name, function) \
+	f = new ClFunction(); \
+	data_ctx->register_permanent_object(f); \
+	f->is_method = false; \
+	f->native_executable_content = function; \
+	data_ctx->global_scope->table[name] = f;
 
-	ASSIGN(CL_LIST, "append", cl_builtin_list_append)
-	ASSIGN(CL_LIST, "iter", cl_builtin_list_iter)
+	// Populate the methods for the basic types.
+	MAKE_METHOD(CL_NIL, "to_string", cl_builtin_nil_to_string)
+	MAKE_METHOD(CL_INT, "to_string", cl_builtin_int_to_string)
+	MAKE_METHOD(CL_BOOL, "to_string", cl_builtin_bool_to_string)
+	MAKE_METHOD(CL_LIST, "to_string", cl_builtin_list_to_string)
+
+	MAKE_METHOD(CL_LIST, "append", cl_builtin_list_append)
+	MAKE_METHOD(CL_LIST, "iter", cl_builtin_list_iter)
+
+	// Populate the global scope with builtin functions.
+	MAKE_GLOBAL("len", cl_builtin_len)
+
+	// Populate the global scope with builtin values.
+	// XXX: TODO: Increment references here, and do ref counting on permanent objects correctly.
+	auto& table = data_ctx->global_scope->table;
+	table["nil"] = data_ctx->nil;
+	table["False"] = data_ctx->static_booleans[0];
+	table["True"] = data_ctx->static_booleans[1];
 }
 
 static ClObj* pop(vector<ClObj*>& stack) {
@@ -169,7 +186,9 @@ static ClObj* pop(vector<ClObj*>& stack) {
 }
 
 ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
+#ifdef DEBUG_OUTPUT
 	cout << "=== exec ===" << endl;
+#endif
 
 	// Main interpreter.
 	vector<ClObj*> stack;
@@ -178,10 +197,12 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 		ClInstruction& instruction = seq->instructions[instruction_pointer];
 		instruction_pointer++;
 
+#ifdef DEBUG_OUTPUT
 		cout << "[" << instruction_pointer-1 << "] Executing: " << cl_opcode_descs[instruction.opcode].name;
 		for (auto& p : stack)
 			cout << ", " << *p;
 		cout << endl;
+#endif
 
 		switch (instruction.opcode) {
 			case OPCODE_INDEX("HALT"): {
@@ -324,9 +345,9 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 				// There is no need to adjust reference counts, because new_item was moved off the stack and into a list.
 				break;
 			}
-			case OPCODE_INDEX("DOT_ACCESS"): {
-				ClObj* obj = pop(stack);
-				ClObj* result = cl_lookup_in_object_table(obj, instruction.data_field);
+			case OPCODE_INDEX("DOT_LOAD"): {
+				ClObj* obj_to_load_from = pop(stack);
+				ClObj* result = cl_lookup_in_object_table(obj_to_load_from, instruction.data_field);
 				// If the resultant object is a method, then bind it.
 				// XXX: TODO: Check ref counting.
 				if (result->kind == CL_FUNCTION && static_cast<ClFunction*>(result)->is_method) {
@@ -334,8 +355,21 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 					data_ctx->register_object(result);
 				}
 				// We don't need to increment result's ref count, because cl_lookup_in_object_table does it for us.
-				obj->dec_ref();
+				obj_to_load_from->dec_ref();
 				stack.push_back(result);
+				break;
+			}
+			case OPCODE_INDEX("DOT_STORE"): {
+				ClObj* value_to_store = pop(stack);
+				ClObj* obj_to_store_in = pop(stack);
+				cl_store_to_object_table(obj_to_store_in, value_to_store, instruction.data_field);
+				value_to_store->dec_ref();
+				obj_to_store_in->dec_ref();
+				break;
+			}
+			case OPCODE_INDEX("GET_GLOBAL"): {
+				data_ctx->global_scope->inc_ref();
+				stack.push_back(data_ctx->global_scope);
 				break;
 			}
 #define BINARY_OPERATION(name, func) \
@@ -438,7 +472,9 @@ int main(int argc, char** argv) {
 extern "C" void cl_execute_string(const char* input, int length) {
 	string s(input, length);
 	auto program = ClInstructionSequence::decode_opcodes(s);
+#ifdef DEBUG_OUTPUT
 	cout << *program;
+#endif
 
 	auto ctx = new ClContext();
 	auto root_scope = new ClRecord(0, 0, ctx->data_ctx->nil);

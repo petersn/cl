@@ -167,6 +167,8 @@ bool cl_coerce_to_boolean(ClObj* obj) {
 			return static_cast<ClString*>(obj)->contents.size() > 0;
 		case (CL_FUNCTION):
 			return true;
+		case (CL_INSTANCE):
+			return true;
 		default:
 			cl_crash("BUG BUG BUG: Unhandled case in cl_coerce_to_boolean.");
 			return false; // Suppress compiler warning.
@@ -198,9 +200,13 @@ ClObj* cl_perform_function_call(ClContext* ctx, ClObj* supposed_function, ClObj*
 }
 
 ClObj* cl_lookup_in_object_table(ClObj* object, const string& name) {
-	const unordered_map<string, ClObj*>& object_table = object->parent->default_type_tables[object->kind];
-	auto result = object_table.find(name);
-	if (result == object_table.end()) {
+	const unordered_map<string, ClObj*>* object_table;
+	if (object->kind == CL_INSTANCE)
+		object_table = &static_cast<ClInstance*>(object)->table;
+	else
+		object_table = &object->parent->default_type_tables[object->kind];
+	auto result = object_table->find(name);
+	if (result == object_table->end()) {
 		string message = "No attribute \"";
 		message += name;
 		message += "\" found.";
@@ -213,6 +219,19 @@ ClObj* cl_lookup_in_object_table(ClObj* object, const string& name) {
 	ClObj* result_obj = (*result).second;
 	result_obj->inc_ref();
 	return result_obj;
+}
+
+void cl_store_to_object_table(ClObj* object_to_store_in, ClObj* value_to_store, const string& name) {
+	if (object->kind != CL_INSTANCE)
+		cl_crash("Attempt to mutate table of non-instance.");
+	unordered_map<string, ClObj*>& object_table = static_cast<ClInstance*>(object_to_store_in)->table;
+	// Decrement the ref count on the old object if we're overwriting.
+	auto result = object_table->find(name);
+	if (result != object_table->end())
+		(*result).second->dec_ref();
+	// Now we are free to overwrite.
+	object_table[name] = value_to_store;
+	value_to_store->inc_ref();
 }
 
 // ===== Built-in functions =====
@@ -296,5 +315,26 @@ ClObj* cl_builtin_list_iter(ClFunction* this_function, ClObj* argument) {
 	ClObj* obj = this_list->contents[iteration_index++];
 	obj->inc_ref();
 	return obj;
+}
+
+ClObj* cl_builtin_len(ClFunction* this_function, ClObj* argument) {
+	cl_int_t value;
+	switch (argument->kind) {
+		case (CL_LIST): {
+			value = static_cast<ClList*>(argument)->contents.size();
+			break;
+		}
+		case (CL_STRING): {
+			value = static_cast<ClString*>(argument)->contents.size();
+			break;
+		}
+		default:
+			cl_crash("Type error on len.");
+			return nullptr; // Suppress compiler warning about no-return.
+	}
+	ClInt* result = new ClInt();
+	this_function->parent->register_object(result);
+	result->value = value;
+	return result;
 }
 

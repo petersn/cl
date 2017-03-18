@@ -1,6 +1,8 @@
 // Lexer for Cl.
 // See parse.py for more details.
 
+eof~             = END_CL_INPUT(.|\n)*
+
 escaped_newline~ = \\\n
 comment~         = #.*
 keyword          = (def|if|else|for|while|class|return|end|print)(?!['a-zA-Z_])

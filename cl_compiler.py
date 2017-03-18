@@ -41,11 +41,30 @@ class SyntaxElement:
 		"while_block",
 		"for_block",
 	])
+	finalized = False
 
-	def __init__(self, kind, ast):
-		self.kind = kind
+	def __init__(self, ast):
 		self.ast = ast
+		self.kind, = Matcher.match_with(ast, (str, Matcher.DropAny()))
 		self.block = [] if self.takes_block() else None
+
+	# This method is basically just for computing some values of function_definitions.
+	# You can add other handlers here if you want, though.
+	def finalize(self):
+		if self.finalized:
+			return
+		self.finalized = True
+		if self.kind == "function_definition":
+			# First we compute the free variables in the body of the function...
+			self.body_free = ClCompiler.compute_free_variables(self.block, locals_only=False)
+			self.body_locals = ClCompiler.compute_free_variables(self.block, locals_only=True)
+			# We now pull out the function name, and sequence of identifiers.
+			self.function_name, self.args_seq = Matcher.match_with(self.ast,
+				("function_definition", [
+					("identifier", str),
+					("ident_seq", list),
+				]))
+			self.args_variables = ClCompiler.compute_free_variables(self.args_seq, locals_only=False)
 
 	def takes_block(self):
 		return self.kind in self.syntax_element_takes_block
@@ -119,6 +138,7 @@ class ClParser:
 		# We now assemble the syntax elements into an AST, and in particular, enforce various block nesting rules at this point.
 		output = []
 		stack = [output]
+		syntax_elements = []
 		for derivation in derived_syntax_elements:
 			# This derivation will always be of the form ("syntax_element", [(kind of syntax element, [...])])
 			# Let's pull out this kind, while simultaneously sanity checking the structure.
@@ -126,7 +146,8 @@ class ClParser:
 				("syntax_element", [(str, list)])
 			)
 			# Build a wrapped SyntaxElement object...
-			se = SyntaxElement(main_element_kind, (main_element_kind, main_element_contents))
+			se = SyntaxElement((main_element_kind, main_element_contents))
+			syntax_elements.append(se)
 			# ... and insert it at the appropriate place in the tree.
 			if se.kind != "end":
 				stack[-1].append(se)
@@ -134,7 +155,7 @@ class ClParser:
 			# If the syntax element wants a block, then we complexify our tree.
 			if se.takes_block():
 				stack.append(se.block)
-			
+
 			# However, if the syntax element is an "end", then we simplify the tree.
 			elif se.kind == "end":
 				if len(stack) > 1:
@@ -142,6 +163,10 @@ class ClParser:
 				else:
 					print "Misplaced end, with no block to end."
 					exit(1)
+
+		# Finalize all the syntax elements.
+		for se in syntax_elements:
+			se.finalize()
 
 		# Finally, we demand that the stack be simply [output] at the end, otherwise an end was mismatched.
 		if len(stack) > 1:
@@ -165,7 +190,11 @@ class ClCompiler:
 			self.indent = indent
 
 		def load(self, var):
-			self.append("LOAD %i    # %s" % (self.variable_table.index(var), var))
+			if var in self.variable_table:
+				self.append("LOAD %i    # %s" % (self.variable_table.index(var), var))
+			else:
+				self.append("GET_GLOBAL")
+				self.append("DOT_LOAD \"%s\"" % (var,))
 
 		def store(self, var):
 			self.append("STORE %i   # %s" % (self.variable_table.index(var), var))
@@ -191,52 +220,51 @@ class ClCompiler:
 		# TODO: Handle escapes here.
 		return s[1:-1]
 
-	def compute_free_variables(self, ast):
+	@staticmethod
+	def compute_free_variables(ast, locals_only):
 		# For lists, union over entries.
 		if isinstance(ast, list):
 			free = set()
 			for entry in ast:
-				free |= self.compute_free_variables(entry)
+				free |= ClCompiler.compute_free_variables(entry, locals_only)
 			return free
 
 		if isinstance(ast, SyntaxElement):
 			node_type = ast.ast[0]
 			if node_type in ["expr", "return", "debug_print"]:
-				return self.compute_free_variables(ast.ast[1])
+				return ClCompiler.compute_free_variables(ast.ast[1], locals_only)
 			elif node_type == "expr": # XXX This code path disabled for now.
 				subexpression, = Matcher.match_with(ast.ast, ("expr", [tuple]))
-				return self.compute_free_variables(subexpression)
+				return ClCompiler.compute_free_variables(subexpression, locals_only)
 			elif node_type == "assignment":
 				variable_name, expr = Matcher.match_with(ast.ast,
 					("assignment", [
 						("identifier", str),
 						tuple,
 					]))
-				return set([variable_name]) | self.compute_free_variables(expr)
+				return set([variable_name]) | ClCompiler.compute_free_variables(expr, locals_only)
 			elif node_type == "function_definition":
-				# XXX: Evaluate how much I like writing these values here.
-				# They should probably be computed in SyntaxElement on construction.
-				# First we compute the free variables in the body of the function...
-				ast.body_free = self.compute_free_variables(ast.block)
-				# We now pull out the function name, and sequence of identifiers.
-				ast.function_name, ast.args_seq = Matcher.match_with(ast.ast,
-					("function_definition", [
-						("identifier", str),
-						("ident_seq", list),
-					]))
-				ast.args_variables = self.compute_free_variables(ast.args_seq)
-				return set([ast.function_name])
+				ast.finalize()
+				if not locals_only:
+					return set([ast.function_name])
+				else:
+					# If we're computing the closure locals, then we add in those from inside recursively.
+					return set([ast.function_name]) | ClCompiler.compute_free_variables(ast.block, locals_only)
 			elif node_type in ("while_block", "if_block", "for_block"):
-				return self.compute_free_variables(ast.ast[1]) | self.compute_free_variables(ast.block)
+				return ClCompiler.compute_free_variables(ast.ast[1], locals_only) | ClCompiler.compute_free_variables(ast.block, locals_only)
 			raise ValueError("Unhandled syntax element type: %r" % (ast.ast,))
 
 		# At this point we are guaranteed to be a tuple from the raw AST given by our parser.
 		node_type, = Matcher.match_with(ast, (str, Matcher.DropAny()))
 
 		if node_type in ["literal"]:
-			return self.compute_free_variables(ast[1])
+			return ClCompiler.compute_free_variables(ast[1], locals_only)
 		elif node_type == "identifier":
-			return set([ast[1]])
+			# If we're computing local variables then a simple reference isn't enough -- you have to assign.
+			if locals_only:
+				return set([])
+			else:
+				return set([ast[1]])
 		elif node_type == "lambda":
 			variable_name, expr = Matcher.match_with(ast,
 				("lambda", [
@@ -244,13 +272,13 @@ class ClCompiler:
 					tuple,
 				]))
 			# We return the free variables in the function body, *minus* the bound variable.
-			return self.compute_free_variables(expr) - set([variable_name])
+			return ClCompiler.compute_free_variables(expr, locals_only) - set([variable_name])
 		elif node_type in ["function_call", "list_literal"]:
 			 # The free variables are simply the union of those in each sub-tuple.
 			free = set()
 			for obj in ast[1]:
 				if isinstance(obj, tuple):
-					free |= self.compute_free_variables(obj)
+					free |= ClCompiler.compute_free_variables(obj, locals_only)
 			return free
 		elif node_type == "binary":
 			expr1, operation_class, operation, expr2 = Matcher.match_with(ast,
@@ -259,21 +287,21 @@ class ClCompiler:
 					(str, str),
 					tuple,
 				]))
-			return self.compute_free_variables(expr1) | self.compute_free_variables(expr2)
+			return ClCompiler.compute_free_variables(expr1, locals_only) | ClCompiler.compute_free_variables(expr2, locals_only)
 		elif node_type == "dot_accessor":
 			expr, dot_access_name = Matcher.match_with(ast,
 				("dot_accessor", [
 					tuple,
 					("identifier", str),
 				]))
-			return self.compute_free_variables(expr)
+			return ClCompiler.compute_free_variables(expr, locals_only)
 		elif node_type == "list_comp_group":
 			list_comp_var, expr = Matcher.match_with(ast,
 				("list_comp_group", [
 					("identifier", str),
 					tuple,
 				]))
-			return set([list_comp_var]) | self.compute_free_variables(expr)
+			return set([list_comp_var]) | ClCompiler.compute_free_variables(expr, locals_only)
 		elif node_type in ["integer", "string"]:
 			return set()
 		raise ValueError("Unhandled node type: %r" % (node_type,))
@@ -310,7 +338,7 @@ class ClCompiler:
 					("identifier", str),
 				]))
 			self.generate_bytecode_for_expr(sub_expr, ctx)
-			ctx.append("DOT_ACCESS \"%s\"" % dot_access_name)
+			ctx.append("DOT_LOAD \"%s\"" % dot_access_name)
 		elif node_type == "binary":
 			expr1, operation_class, operation, expr2 = Matcher.match_with(expr,
 				("binary", [
@@ -402,7 +430,7 @@ class ClCompiler:
 				done_iterating_label = self.new_label()
 				# Generate the iterator object, then iterate over it.
 				self.generate_bytecode_for_expr(expr, ctx)
-				ctx.append("DOT_ACCESS \"iter\"")
+				ctx.append("DOT_LOAD \"iter\"")
 				ctx.append("%s:" % top_label)
 				ctx.append("ITERATE %s" % done_iterating_label)
 				# Then assign the yielded value into the iteration variable.
@@ -418,12 +446,12 @@ class ClCompiler:
 				# The full inner variable table is just all the free variables used inside.
 				assert len(syntax_elem.args_seq) == 1, "For now only functions of one variable are supported."
 				argument_name, = Matcher.match_with(syntax_elem.args_seq[0], ("identifier", str))
-				inner_variable_table = list(syntax_elem.body_free - set([argument_name]))
+				inner_variable_table = list(syntax_elem.body_locals - set([argument_name]))
 				# Map the function argument to be the first entry in the variable table.
 				inner_variable_table = [argument_name] + inner_variable_table
 
 				# Compute the list of variables we're closing over.
-				closure_vars = syntax_elem.body_free - syntax_elem.args_variables
+				closure_vars = syntax_elem.body_locals - syntax_elem.args_variables
 				transfer_records = [
 					(ctx.variable_table.index(var), inner_variable_table.index(var))
 					for var in closure_vars if var in ctx.variable_table
@@ -447,7 +475,7 @@ class ClCompiler:
 		assert all(isinstance(entry, SyntaxElement) for entry in syntax_elem_seq)
 
 		# First we compute the list of global variables.
-		global_vars = self.compute_free_variables(syntax_elem_seq)
+		global_vars = self.compute_free_variables(syntax_elem_seq, locals_only=True)
 		# We now allocate them in some order for our global record.
 		global_variable_table = [None] + sorted(global_vars)
 		# Here the None corresponds to the argument our MAKE_FUNCTION will ignore.
@@ -465,7 +493,7 @@ def source_to_bytecode(source):
 	compiler = ClCompiler()
 	ast = parser.parse(source)
 	bytecode_text = compiler.generate_overall_bytecode(ast)
-#	print "Bytecode text:", bytecode_text
+	print "Bytecode text:", bytecode_text
 	assembly_unit = assemble.make_assembly_unit(bytecode_text)
 	bytecode = assemble.assemble(assembly_unit)
 	return bytecode
@@ -480,9 +508,11 @@ def build_adder x
 	return the_adder
 end
 
-#five_adder = build_adder([5])
-#print five_adder([7])
+five_adder = build_adder([5])
+print five_adder([7])
 #print 5.to_string(nil)
+
+END_CL_INPUT
 
 l = []
 l.append("foo"); l.append(2)
@@ -490,6 +520,8 @@ l.append(3)
 for i <- l
 	print i
 end
+
+print g_len(l)
 
 #def factorial y
 #	accum = 1

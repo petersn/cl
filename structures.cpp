@@ -177,6 +177,17 @@ ClFunction* ClFunction::produce_bound_method(ClObj* object_who_has_method) {
 	return bound_method;
 }
 
+// ===== ClInstance =====
+
+ClInstance::~ClInstance() {
+	for (auto& pair : table)
+		pair.second->dec_ref();
+}
+
+void ClInstance::pprint(ostream& os) const {
+	os << "Instance";
+}
+
 // ===== ClStopIteration =====
 
 void ClStopIteration::pprint(ostream& os) const {
@@ -186,17 +197,24 @@ void ClStopIteration::pprint(ostream& os) const {
 // ===== ClDataContext =====
 
 ClDataContext::ClDataContext() : objects_registered(0), objects_freed(0) {
-	// Statically allocate a nil object.
+	// Statically allocate various objects.
 	nil = new ClNil();
 	register_permanent_object(nil);
+
 	static_booleans[0] = new ClBool();
 	static_booleans[0]->truth_value = false;
 	register_permanent_object(static_booleans[0]);
+
 	static_booleans[1] = new ClBool();
 	static_booleans[1]->truth_value = true;
 	register_permanent_object(static_booleans[1]);
+
 	stop_iteration = new ClStopIteration();
 	register_permanent_object(stop_iteration);
+
+	// Statically allocate the global scope.
+	global_scope = new ClInstance();
+	register_permanent_object(global_scope);
 
 	// We now build an array of default lookup tables for our default types.
 	default_type_tables = new unordered_map<string, ClObj*>[CL_KIND_COUNT];

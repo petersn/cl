@@ -29,6 +29,7 @@ enum ClKind {
 	CL_MAP,
 	CL_STRING,
 	CL_FUNCTION,
+	CL_INSTANCE,
 	CL_STOP_ITERATION,
 	CL_KIND_COUNT,
 };
@@ -42,6 +43,7 @@ const char* const cl_kind_to_name[CL_KIND_COUNT] = {
 	"Map",
 	"String",
 	"Function",
+	"Instance",
 	"StopIteration",
 };
 
@@ -140,6 +142,14 @@ struct ClFunction : public ClObj {
 	ClFunction* produce_bound_method(ClObj* object_who_has_method);
 };
 
+struct ClInstance : public ClObj {
+	std::unordered_map<std::string, ClObj*> table;
+
+	ClInstance() : ClObj(CL_INSTANCE) {}
+	virtual ~ClInstance();
+	virtual void pprint(std::ostream& os) const;
+};
+
 struct ClStopIteration : public ClObj {
 	ClStopIteration() : ClObj(CL_STOP_ITERATION) {}
 	virtual void pprint(std::ostream& os) const;
@@ -150,6 +160,7 @@ struct ClDataContext {
 	ClNil* nil;
 	ClBool* static_booleans[2];
 	ClStopIteration* stop_iteration;
+	ClInstance* global_scope;
 	int64_t objects_registered;
 	int64_t objects_freed;
 

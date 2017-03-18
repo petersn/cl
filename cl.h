@@ -48,7 +48,9 @@ constexpr ClOpcodeDesc cl_opcode_descs[] = {
 	ClOpcodeDesc({"ITERATE",        1,  0, false}),
 	ClOpcodeDesc({"STOP_ITERATION", 0,  0, false}),
 	ClOpcodeDesc({"LIST_APPEND",    0, -1, false}),
-	ClOpcodeDesc({"DOT_ACCESS",     0,  0, true }),
+	ClOpcodeDesc({"DOT_LOAD",       0,  0, true }),
+	ClOpcodeDesc({"DOT_STORE",      0, -2, true }),
+	ClOpcodeDesc({"GET_GLOBAL",     0,  1, false}),
 	ClOpcodeDesc({"BINARY_PLUS",    0, -1, false}),
 	ClOpcodeDesc({"BINARY_MINUS",   0, -1, false}),
 	ClOpcodeDesc({"BINARY_TIMES",   0, -1, false}),
@@ -157,6 +159,7 @@ public:
 bool cl_coerce_to_boolean(ClObj* obj);
 ClObj* cl_perform_function_call(ClContext* ctx, ClObj* supposed_function, ClObj* argument);
 ClObj* cl_lookup_in_object_table(ClObj* object, const std::string& name);
+void cl_store_to_object_table(ClObj* object_to_store_in, ClObj* value_to_store, const std::string& name);
 
 ClObj* cl_builtin_nil_to_string(ClFunction* this_function, ClObj* argument);
 ClObj* cl_builtin_int_to_string(ClFunction* this_function, ClObj* argument);
@@ -164,6 +167,7 @@ ClObj* cl_builtin_bool_to_string(ClFunction* this_function, ClObj* argument);
 ClObj* cl_builtin_list_to_string(ClFunction* this_function, ClObj* argument);
 ClObj* cl_builtin_list_append(ClFunction* this_function, ClObj* argument);
 ClObj* cl_builtin_list_iter(ClFunction* this_function, ClObj* argument);
+ClObj* cl_builtin_len(ClFunction* this_function, ClObj* argument);
 
 // Our C API.
 extern "C" {
