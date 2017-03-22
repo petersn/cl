@@ -222,12 +222,12 @@ ClObj* cl_lookup_in_object_table(ClObj* object, const string& name) {
 }
 
 void cl_store_to_object_table(ClObj* object_to_store_in, ClObj* value_to_store, const string& name) {
-	if (object->kind != CL_INSTANCE)
+	if (object_to_store_in->kind != CL_INSTANCE)
 		cl_crash("Attempt to mutate table of non-instance.");
 	unordered_map<string, ClObj*>& object_table = static_cast<ClInstance*>(object_to_store_in)->table;
 	// Decrement the ref count on the old object if we're overwriting.
-	auto result = object_table->find(name);
-	if (result != object_table->end())
+	auto result = object_table.find(name);
+	if (result != object_table.end())
 		(*result).second->dec_ref();
 	// Now we are free to overwrite.
 	object_table[name] = value_to_store;

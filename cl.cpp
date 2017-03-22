@@ -351,7 +351,7 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 				// If the resultant object is a method, then bind it.
 				// XXX: TODO: Check ref counting.
 				if (result->kind == CL_FUNCTION && static_cast<ClFunction*>(result)->is_method) {
-					result = static_cast<ClFunction*>(result)->produce_bound_method(obj);
+					result = static_cast<ClFunction*>(result)->produce_bound_method(obj_to_load_from);
 					data_ctx->register_object(result);
 				}
 				// We don't need to increment result's ref count, because cl_lookup_in_object_table does it for us.
