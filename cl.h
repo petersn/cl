@@ -65,6 +65,9 @@ constexpr ClOpcodeDesc cl_opcode_descs[] = {
 	ClOpcodeDesc({"JUMP_IF_FALSEY", 1, -1, false}),
 	ClOpcodeDesc({"RETURN",         0,  0, false}),
 	ClOpcodeDesc({"PRINT",          0, -1, false}),
+// This is a pseudo-opcode that exists purely in the input opcode stream.
+// It should be removed from the opcode stream before exection.
+	ClOpcodeDesc({"LINE_NUMBER",    1,-99, false}),
 // END-PY-PARSING
 };
 
@@ -112,6 +115,7 @@ struct ClMakeFunctionDescriptor {
 	uint32_t subscope_length;
 	std::vector<std::pair<int, int>> subscope_closure_descriptor;
 	ClInstructionSequence* executable_content;
+	std::string function_name;
 
 	// This method decodes the descriptor from a string, and returns the number of bytes consumed.
 	// One obvious protocol would be to pass in a string, but then we might take $O(n^2)$ time to
@@ -124,6 +128,7 @@ struct ClInstruction {
 	int opcode;
 	cl_int_t args[MAX_OPCODE_ARGUMENT_COUNT] = {0};
 	std::string data_field;
+	int line_number;
 
 	// These fields are specific to MAKE_FUNCTION calls.
 	ClMakeFunctionDescriptor make_function_descriptor;
@@ -143,7 +148,7 @@ public:
 	ClDataContext* data_ctx;
 
 	ClContext();
-	ClObj* execute(ClRecord* scope, ClInstructionSequence* seq);
+	ClObj* execute(const std::string* traceback_name, ClRecord* scope, ClInstructionSequence* seq);
 
 	// Operations.
 	ClObj* binary_plus(ClObj* left, ClObj* right);

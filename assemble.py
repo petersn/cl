@@ -60,7 +60,10 @@ def make_assembly_unit(s):
 
 		# We now pull out the first token to get the opcode name.
 		opcode_name = line.split()[0]
-		stack[-1].instruction_counter += 1
+
+		# Only increment the instruction counter if we're not a LINE_NUMBER pseudo-instruction.
+		if opcode_name != "LINE_NUMBER":
+			stack[-1].instruction_counter += 1
 
 		# If we hit a "}" then we pop out one level of function-definition.
 		if opcode_name == "}":
@@ -95,16 +98,18 @@ def make_assembly_unit(s):
 			assert len(args) == 1
 			args = args[0].split()
 			assert args.pop(-1) == "{"
+			function_name = args[0]
 			# We now read out the closure specifier.
-			subscope_length = int(args[0])
+			subscope_length = int(args[1])
 			subscope_closure_descriptors = []
-			for i in args[1:]:
+			for i in args[2:]:
 				load_index, store_index = map(int, i.split("->"))
 				subscope_closure_descriptors.append((load_index, store_index))
 			new_assembly_unit = AssemblyUnit()
 			stack[-1].ast.append({
 				"name": "MAKE_FUNCTION",
 				"args": [],
+				"function_name": function_name,
 				"subscope_length": subscope_length,
 				"subscope_closure_descriptors": subscope_closure_descriptors,
 				"contents": new_assembly_unit,
@@ -137,7 +142,10 @@ def assemble(assembly_unit):
 		if op["name"] == "MAKE_FUNCTION":
 			# If we're a MAKE_FUNCTION then we format the data field specially.
 			data_field = ""
-			# First, include the subscope length.
+			# First include the function name.
+			data_field += struct.pack("<I", len(op["function_name"]))
+			data_field += op["function_name"]
+			# Next, include the subscope length.
 			data_field += struct.pack("<I", op["subscope_length"])
 			# Then include the number of closure descriptors.
 			data_field += struct.pack("<I", len(op["subscope_closure_descriptors"]))

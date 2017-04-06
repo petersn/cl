@@ -1,7 +1,5 @@
 // Some crappy language.
 
-#define DEBUG_OUTPUT
-
 #include <iterator>
 #include <iostream>
 #include <istream>
@@ -24,7 +22,15 @@ size_t ClMakeFunctionDescriptor::read_from(const char* data, size_t length) {
 		length -= sizeof(type); \
 	} while(0)
 
-	// First we read out the subscope size.
+	// First we read out the function name size.
+	uint32_t function_name_length;
+	READ_INTO(function_name_length, uint32_t);
+	// Then we read the actual data in.
+	function_name = string(data, function_name_length);
+	data += function_name_length;
+	length -= function_name_length;
+
+	// Next we read out the subscope size.
 	READ_INTO(subscope_length, uint32_t);
 	// Read out the number of closure records.
 	uint32_t closure_record_count;
@@ -52,6 +58,7 @@ size_t ClMakeFunctionDescriptor::read_from(const char* data, size_t length) {
 
 ClInstructionSequence* ClInstructionSequence::decode_opcodes(const string& s) {
 	auto result = new ClInstructionSequence();
+	int line_number = -1;
 
 	// Decode the opcodes, one at a time.
 	for (size_t string_index = 0; string_index < s.size();) {
@@ -67,6 +74,7 @@ ClInstructionSequence* ClInstructionSequence::decode_opcodes(const string& s) {
 		}
 
 		ClInstruction instr;
+		instr.line_number = line_number;
 		instr.opcode = (int)opcode_value;
 		ClOpcodeDesc desc = cl_opcode_descs[instr.opcode];
 
@@ -94,6 +102,13 @@ ClInstructionSequence* ClInstructionSequence::decode_opcodes(const string& s) {
 		// If it's a MAKE_FUNCTION opcode we separately decode the closure description.
 		if (instr.opcode == OPCODE_INDEX("MAKE_FUNCTION")) {
 			instr.make_function_descriptor.read_from(&instr.data_field[0], instr.data_field.length());
+		}
+
+		// If it's a LINE_NUMBER opcode, then it's a pseudo-instruction, and doesn't
+		// actually get included in the executable stream.
+		if (instr.opcode == OPCODE_INDEX("LINE_NUMBER")) {
+			line_number = instr.args[0];
+			continue;
 		}
 
 		result->instructions.push_back(instr);
@@ -137,7 +152,7 @@ ostream& operator << (ostream& os, const ClInstructionSequence& seq) {
 }
 
 void cl_crash(string message) {
-	cerr << "ERROR: " << message << endl;
+	cerr << "Error: " << message << endl;
 	exit(1);
 } 
 
@@ -147,6 +162,7 @@ ClContext::ClContext() {
 
 #define MAKE_METHOD(kind, name, function) \
 	f = new ClFunction(); \
+	f->function_name = data_ctx->register_permanent_string(name); \
 	data_ctx->register_object(f); \
 	f->is_method = true; \
 	f->native_executable_content = function; \
@@ -154,6 +170,7 @@ ClContext::ClContext() {
 
 #define MAKE_GLOBAL(name, function) \
 	f = new ClFunction(); \
+	f->function_name = data_ctx->register_permanent_string(name); \
 	data_ctx->register_object(f); \
 	f->is_method = false; \
 	f->native_executable_content = function; \
@@ -185,10 +202,13 @@ static ClObj* pop(vector<ClObj*>& stack) {
 	return obj;
 }
 
-ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
+ClObj* ClContext::execute(const string* traceback_name, ClRecord* scope, ClInstructionSequence* seq) {
 #ifdef DEBUG_OUTPUT
 	cout << "=== exec ===" << endl;
 #endif
+
+	// Begin by adding a traceback entry.
+	data_ctx->traceback.push_back(ClTracebackEntry({traceback_name, new string("unknown file"), 42}));
 
 	// Main interpreter.
 	vector<ClObj*> stack;
@@ -339,7 +359,7 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 					cl_crash("Stack underflow.");
 				ClObj* possibly_list = stack.back();
 				if (possibly_list->kind != CL_LIST)
-					cl_crash("Attempted to append onto non-list.");
+					data_ctx->traceback_and_crash("Attempted to append onto non-list.");
 				ClList* list = static_cast<ClList*>(possibly_list);
 				list->contents.push_back(new_item);
 				// There is no need to adjust reference counts, because new_item was moved off the stack and into a list.
@@ -449,6 +469,8 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 	for (auto& p : stack)
 		p->dec_ref();
 
+	data_ctx->traceback.pop_back();
+
 	// Return the top-of-stack (or nil) value.
 	// The caller shouldn't increment the reference on this object when it inserts it somewhere, because
 	// its ref count is already one high from the fact that we exempted it from the above decrementation.
@@ -483,8 +505,11 @@ extern "C" void cl_execute_string(const char* input, int length) {
 	auto ctx = new ClContext();
 	auto root_scope = new ClRecord(0, 0, ctx->data_ctx->nil);
 
+	// We come up with.
+	string root_traceback_name = "<bug bug bug this should never show up>";
+
 	// Execute the program!
-	ClObj* return_value = ctx->execute(root_scope, program);
+	ClObj* return_value = ctx->execute(&root_traceback_name, root_scope, program);
 	// Decrement the ref count so this last return value gets reaped.
 	return_value->dec_ref();
 

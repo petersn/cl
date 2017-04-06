@@ -135,6 +135,7 @@ struct ClFunction : public ClObj {
 	// Function pointer for implementing native functions.
 	ClObj* (*native_executable_content)(ClFunction* this_function, ClObj* argument) = nullptr;
 	void* native_executable_cache = nullptr;
+	const std::string* function_name;
 
 	virtual ~ClFunction();
 	ClFunction() : ClObj(CL_FUNCTION) {}
@@ -155,6 +156,12 @@ struct ClStopIteration : public ClObj {
 	virtual void pprint(std::ostream& os) const;
 };
 
+struct ClTracebackEntry {
+	const std::string* function_name;
+	const std::string* file;
+	int line_number;
+};
+
 struct ClDataContext {
 	std::unordered_set<ClObj*> objects;
 	std::vector<ClObj*> permanent_objects;
@@ -164,8 +171,10 @@ struct ClDataContext {
 	ClInstance* global_scope;
 	int64_t objects_registered;
 	int64_t objects_freed;
+	std::vector<std::string*> permanent_strings;
 
 	std::unordered_map<std::string, ClObj*>* default_type_tables;
+	std::vector<ClTracebackEntry> traceback;
 
 	ClDataContext();
 	void unref_all_permanent_objects();
@@ -173,6 +182,10 @@ struct ClDataContext {
 	ClObj* register_object(ClObj* obj);
 	// If you don't want garbage collection, and thus don't want a ``leaked object'' warning at exit, register with this. 
 	ClObj* register_permanent_object(ClObj* obj);
+	// This routine is just for producing strings that we want to free later.
+	const std::string* register_permanent_string(std::string s);
+
+	void traceback_and_crash(std::string message) __attribute__ ((noreturn));
 };
 
 namespace cl_template_trickery {
@@ -197,7 +210,7 @@ static inline T* assert_kind(ClObj* obj) {
 		error_message += std::string(cl_kind_to_name[cl_template_trickery::get_kind<T>::kind]);
 		error_message += ", instead got: ";
 		error_message += cl_kind_to_name[obj->kind];
-		cl_crash(error_message.c_str());
+		obj->parent->traceback_and_crash(error_message.c_str());
 	};
 	return static_cast<T*>(obj);
 }

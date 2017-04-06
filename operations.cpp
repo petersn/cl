@@ -16,11 +16,11 @@
 	auto obj = new type(); \
 	data_ctx->register_object(obj);
 
-static cl_int_t util_length_wrap(cl_int_t index, cl_int_t length) {
+static inline cl_int_t util_length_wrap(ClDataContext* data_ctx, cl_int_t index, cl_int_t length) {
 	if (index < 0)
 		index += length;
 	if (index >= length)
-		cl_crash("Index out of range.");
+		data_ctx->traceback_and_crash("Index out of range.");
 	return index;
 }
 
@@ -44,7 +44,7 @@ ClObj* ClContext::binary_plus(ClObj* _left, ClObj* _right) {
 			p->inc_ref();
 	End_Case
 
-	cl_crash("Type error on binary plus.");
+	data_ctx->traceback_and_crash("Type error on binary plus.");
 }
 
 ClObj* ClContext::binary_minus(ClObj* _left, ClObj* _right) {
@@ -53,7 +53,7 @@ ClObj* ClContext::binary_minus(ClObj* _left, ClObj* _right) {
 		obj->value = left->value - right->value;
 	End_Case
 
-	cl_crash("Type error on binary minus.");
+	data_ctx->traceback_and_crash("Type error on binary minus.");
 }
 
 ClObj* ClContext::binary_times(ClObj* _left, ClObj* _right) {
@@ -83,7 +83,7 @@ ClObj* ClContext::binary_times(ClObj* _left, ClObj* _right) {
 		return binary_times(_right, _left);
 	}
 
-	cl_crash("Type error on binary times.");
+	data_ctx->traceback_and_crash("Type error on binary times.");
 }
 
 ClObj* ClContext::binary_divide(ClObj* _left, ClObj* _right) {
@@ -92,7 +92,7 @@ ClObj* ClContext::binary_divide(ClObj* _left, ClObj* _right) {
 		obj->value = left->value / right->value;
 	End_Case
 
-	cl_crash("Type error on binary divide.");
+	data_ctx->traceback_and_crash("Type error on binary divide.");
 }
 
 ClObj* ClContext::binary_modulo(ClObj* _left, ClObj* _right) {
@@ -104,27 +104,27 @@ ClObj* ClContext::binary_modulo(ClObj* _left, ClObj* _right) {
 			obj->value += right->value;
 	End_Case
 
-	cl_crash("Type error on binary modulo.");
+	data_ctx->traceback_and_crash("Type error on binary modulo.");
 }
 
 ClObj* ClContext::binary_index(ClObj* _left, ClObj* _right) {
 	Type_Case(ClString, ClInt)
 		Give(ClString)
-		cl_int_t index = util_length_wrap(right->value, left->contents.size());
+		cl_int_t index = util_length_wrap(data_ctx, right->value, left->contents.size());
 		obj->contents = string(&left->contents[index], 1);
 	End_Case
 
 	Type_Case(ClList, ClInt)
-		cl_int_t index = util_length_wrap(right->value, left->contents.size());
+		cl_int_t index = util_length_wrap(data_ctx, right->value, left->contents.size());
 		ClObj* obj = left->contents[index];
 		obj->inc_ref();
 	End_Case
 
-	cl_crash("Type error on binary index.");
+	data_ctx->traceback_and_crash("Type error on binary index.");
 }
 
 ClObj* ClContext::binary_in(ClObj* _left, ClObj* _right) {
-	cl_crash("Type error on binary in.");
+	data_ctx->traceback_and_crash("Type error on binary in.");
 }
 
 ClObj* ClContext::binary_compare(ClObj* _left, ClObj* _right, ClComparisonType comparison_type) {
@@ -145,7 +145,7 @@ ClObj* ClContext::binary_compare(ClObj* _left, ClObj* _right, ClComparisonType c
 		return obj;
 	End_Case
 
-	cl_crash("Type error on binary compare.");
+	data_ctx->traceback_and_crash("Type error on binary compare.");
 }
 
 // ===== Major helpers =====
@@ -192,7 +192,7 @@ ClObj* cl_perform_function_call(ClContext* ctx, ClObj* supposed_function, ClObj*
 		// We set the magic value 0 in the child_scope to be the passed in argument.
 		child_scope->store(0, argument);
 		// Do execution!
-		return_value = ctx->execute(child_scope, function_obj->executable_content);
+		return_value = ctx->execute(function_obj->function_name, child_scope, function_obj->executable_content);
 		// By deleting the child scope we effectively decrement the ref count on argument, completing our obligation.
 		delete child_scope;
 	}
@@ -210,7 +210,7 @@ ClObj* cl_lookup_in_object_table(ClObj* object, const string& name) {
 		string message = "No attribute \"";
 		message += name;
 		message += "\" found.";
-		cl_crash(message);
+		object->parent->traceback_and_crash(message);
 //		// This increment is correct and necessary.
 //		object->parent->nil->inc_ref();
 //		return object->parent->nil;
@@ -223,7 +223,7 @@ ClObj* cl_lookup_in_object_table(ClObj* object, const string& name) {
 
 void cl_store_to_object_table(ClObj* object_to_store_in, ClObj* value_to_store, const string& name) {
 	if (object_to_store_in->kind != CL_INSTANCE)
-		cl_crash("Attempt to mutate table of non-instance.");
+		object_to_store_in->parent->traceback_and_crash("Attempt to mutate table of non-instance.");
 	unordered_map<string, ClObj*>& object_table = static_cast<ClInstance*>(object_to_store_in)->table;
 	// Decrement the ref count on the old object if we're overwriting.
 	auto result = object_table.find(name);
@@ -329,7 +329,7 @@ ClObj* cl_builtin_len(ClFunction* this_function, ClObj* argument) {
 			break;
 		}
 		default:
-			cl_crash("Type error on len.");
+			this_function->parent->traceback_and_crash("Type error on len.");
 			return nullptr; // Suppress compiler warning about no-return.
 	}
 	ClInt* result = new ClInt();

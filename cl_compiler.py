@@ -483,7 +483,7 @@ class ClCompiler:
 				]
 				transfer_records_string = "".join(" %i->%i" % pair for pair in transfer_records)
 				body = []
-				definition = ["MAKE_FUNCTION %s%s {" % (len(inner_variable_table), transfer_records_string), body, "}"]
+				definition = ["MAKE_FUNCTION %s %s%s {" % (syntax_elem.function_name, len(inner_variable_table), transfer_records_string), body, "}"]
 				inner_ctx = ClCompiler.CompilationContext(body, inner_variable_table, indent=2)
 				self.generate_bytecode_for_seq(syntax_elem.block, inner_ctx)
 				# Finally, we flatten our definition.
@@ -506,7 +506,7 @@ class ClCompiler:
 		# Here the None corresponds to the argument our MAKE_FUNCTION will ignore.
 
 		body = []
-		output = ["MAKE_FUNCTION %s {" % len(global_variable_table), body, "}", "MAKE_NIL", "CALL"]
+		output = ["MAKE_FUNCTION <root> %s {" % len(global_variable_table), body, "}", "MAKE_NIL", "CALL"]
 		ctx = ClCompiler.CompilationContext(body, global_variable_table, indent=2)
 		self.generate_bytecode_for_seq(syntax_elem_seq, ctx)
 
@@ -525,7 +525,6 @@ def source_to_bytecode(source):
 
 if __name__ == "__main__":
 	source = """
-
 # Huzzah for Cl!
 def build_adder x
 	def the_adder y
@@ -552,6 +551,7 @@ def factorial y
 	while y
 		accum = accum * y
 		y = y - 1
+		print 1(1)
 	end
 	return accum
 end

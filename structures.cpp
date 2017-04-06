@@ -172,6 +172,7 @@ ClFunction* ClFunction::produce_bound_method(ClObj* object_who_has_method) {
 	bound_method->closed_this = object_who_has_method;
 	bound_method->native_executable_content = native_executable_content;
 	bound_method->native_executable_cache = native_executable_cache;
+	bound_method->function_name = function_name;
 
 	object_who_has_method->inc_ref();
 	return bound_method;
@@ -246,5 +247,23 @@ ClObj* ClDataContext::register_permanent_object(ClObj* obj) {
 	register_object(obj);
 	permanent_objects.push_back(obj);
 	return obj;
+}
+
+const string* ClDataContext::register_permanent_string(string s) {
+	string* new_s = new string(s);
+	permanent_strings.push_back(new_s);
+	return new_s;
+}
+
+void ClDataContext::traceback_and_crash(string message) {
+	cerr << "Traceback:" << endl;
+	for (ClTracebackEntry& entry : traceback) {
+		if (entry.function_name == nullptr)
+			cerr << "  Null pointer in traceback." << endl;
+		else
+			cerr << "  " << *entry.function_name << " from \"" << *entry.file << "\", line " << entry.line_number << endl;
+		// TODO: Implement reading the actual lines from the files.
+	}
+	cl_crash(message);
 }
 
