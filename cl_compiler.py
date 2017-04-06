@@ -506,7 +506,7 @@ class ClCompiler:
 		# Here the None corresponds to the argument our MAKE_FUNCTION will ignore.
 
 		body = []
-		output = ["MAKE_FUNCTION %s {" % len(global_variable_table), body, "}", "MAKE_NIL", "CALL", "POP"]
+		output = ["MAKE_FUNCTION %s {" % len(global_variable_table), body, "}", "MAKE_NIL", "CALL"]
 		ctx = ClCompiler.CompilationContext(body, global_variable_table, indent=2)
 		self.generate_bytecode_for_seq(syntax_elem_seq, ctx)
 
@@ -525,7 +525,6 @@ def source_to_bytecode(source):
 
 if __name__ == "__main__":
 	source = """
-END_CL_INPUT
 
 # Huzzah for Cl!
 def build_adder x
@@ -558,7 +557,6 @@ def factorial y
 end
 print factorial(5)
 
-END_CL_INPUT
 """
 	_bytecode = source_to_bytecode(source)
 
