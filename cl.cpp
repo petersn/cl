@@ -351,8 +351,12 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 				// If the resultant object is a method, then bind it.
 				// XXX: TODO: Check ref counting.
 				if (result->kind == CL_FUNCTION && static_cast<ClFunction*>(result)->is_method) {
-					result = static_cast<ClFunction*>(result)->produce_bound_method(obj_to_load_from);
-					data_ctx->register_object(result);
+					ClFunction* new_result = static_cast<ClFunction*>(result)->produce_bound_method(obj_to_load_from);
+					data_ctx->register_object(new_result);
+					// We now decrement the reference on ``result'', because we're not storing it anywhere,
+					// and cl_lookup_in_object_table incremented its ref_count, assuming we would.
+					result->dec_ref();
+					result = new_result;
 				}
 				// We don't need to increment result's ref count, because cl_lookup_in_object_table does it for us.
 				obj_to_load_from->dec_ref();
@@ -495,14 +499,5 @@ extern "C" void cl_execute_string(const char* input, int length) {
 			cout << "    " << *obj << endl;
 		}
 	}
-	// Check nil's reference count.
-	// TODO: Iterate over register_permanent_object objects.
-/*
-	if (ctx->data_ctx->nil->ref_count != 1)
-		cout << "WARNING: Ref count on nil not one: " << ctx->data_ctx->nil->ref_count << endl;
-	if (ctx->data_ctx->stop_iteration->ref_count != 1)
-		cout << "WARNING: Ref count on stop iteration not one: " << ctx->data_ctx->stop_iteration->ref_count << endl;
-//	cout << "Registered: " << ctx->data_ctx->objects_registered << " Freed: " << ctx->data_ctx->objects_freed << endl;
-*/
 }
 
