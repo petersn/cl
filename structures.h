@@ -157,6 +157,7 @@ struct ClStopIteration : public ClObj {
 
 struct ClDataContext {
 	std::unordered_set<ClObj*> objects;
+	std::vector<ClObj*> permanent_objects;
 	ClNil* nil;
 	ClBool* static_booleans[2];
 	ClStopIteration* stop_iteration;
@@ -167,6 +168,7 @@ struct ClDataContext {
 	std::unordered_map<std::string, ClObj*>* default_type_tables;
 
 	ClDataContext();
+	void unref_all_permanent_objects();
 	// In order to be tracked by the garbage collector, you must call register_object on each new ClObj allocated.
 	ClObj* register_object(ClObj* obj);
 	// If you don't want garbage collection, and thus don't want a ``leaked object'' warning at exit, register with this. 

@@ -220,6 +220,21 @@ ClDataContext::ClDataContext() : objects_registered(0), objects_freed(0) {
 	default_type_tables = new unordered_map<string, ClObj*>[CL_KIND_COUNT];
 }
 
+void ClDataContext::unref_all_permanent_objects() {
+	// First we decrement references on every object registered with register_permanent_object.
+	for (ClObj* permanent_object : permanent_objects)
+		permanent_object->dec_ref();
+	// Clear out the list of permanent objects, so this method is idempotent.
+	permanent_objects.clear();
+	// Next we clear out the default type tables for the various kinds.
+	for (int kind = 0; kind < CL_KIND_COUNT; kind++) {
+		for (auto& pair : default_type_tables[kind])
+			pair.second->dec_ref();
+		// Clear out the unordered_map, so this method is idempotent.
+		default_type_tables[kind].clear();
+	}
+}
+
 ClObj* ClDataContext::register_object(ClObj* obj) {
 	obj->parent = this;
 	objects.insert(obj);
@@ -228,7 +243,8 @@ ClObj* ClDataContext::register_object(ClObj* obj) {
 }
 
 ClObj* ClDataContext::register_permanent_object(ClObj* obj) {
-	obj->parent = this;
+	register_object(obj);
+	permanent_objects.push_back(obj);
 	return obj;
 }
 

@@ -525,6 +525,8 @@ def source_to_bytecode(source):
 
 if __name__ == "__main__":
 	source = """
+END_CL_INPUT
+
 # Huzzah for Cl!
 def build_adder x
 	def the_adder y
@@ -537,8 +539,6 @@ five_adder = build_adder([5])
 print five_adder([7])
 #print 5.to_string(nil)
 
-END_CL_INPUT
-
 l = []
 l.append("foo"); l.append(2)
 l.append(3)
@@ -546,17 +546,19 @@ for i <- l
 	print i
 end
 
-print g_len(l)
+print len(l)
 
-#def factorial y
-#	accum = 1
-#	while y
-#		accum = accum * y
-#		y = y - 1
-#	end
-#	return accum
-#end
-#print factorial 5
+def factorial y
+	accum = 1
+	while y
+		accum = accum * y
+		y = y - 1
+	end
+	return accum
+end
+print factorial(5)
+
+END_CL_INPUT
 """
 	_bytecode = source_to_bytecode(source)
 

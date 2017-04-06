@@ -147,14 +147,14 @@ ClContext::ClContext() {
 
 #define MAKE_METHOD(kind, name, function) \
 	f = new ClFunction(); \
-	data_ctx->register_permanent_object(f); \
+	data_ctx->register_object(f); \
 	f->is_method = true; \
 	f->native_executable_content = function; \
 	data_ctx->default_type_tables[kind][name] = f;
 
 #define MAKE_GLOBAL(name, function) \
 	f = new ClFunction(); \
-	data_ctx->register_permanent_object(f); \
+	data_ctx->register_object(f); \
 	f->is_method = false; \
 	f->native_executable_content = function; \
 	data_ctx->global_scope->table[name] = f;
@@ -172,11 +172,9 @@ ClContext::ClContext() {
 	MAKE_GLOBAL("len", cl_builtin_len)
 
 	// Populate the global scope with builtin values.
-	// XXX: TODO: Increment references here, and do ref counting on permanent objects correctly.
-	auto& table = data_ctx->global_scope->table;
-	table["nil"] = data_ctx->nil;
-	table["False"] = data_ctx->static_booleans[0];
-	table["True"] = data_ctx->static_booleans[1];
+	cl_store_to_object_table(data_ctx->global_scope, data_ctx->nil, "nil");
+	cl_store_to_object_table(data_ctx->global_scope, data_ctx->static_booleans[0], "False");
+	cl_store_to_object_table(data_ctx->global_scope, data_ctx->static_booleans[1], "True");
 }
 
 static ClObj* pop(vector<ClObj*>& stack) {
@@ -486,6 +484,10 @@ extern "C" void cl_execute_string(const char* input, int length) {
 	// Decrement the ref count so this last return value gets reaped.
 	return_value->dec_ref();
 
+	// Unref all permanent objects.
+	// At this point all objects should have a ref count of zero, or be in unreachable cycles.
+	ctx->data_ctx->unref_all_permanent_objects();
+
 	// Check for leaked objects.
 	if (ctx->data_ctx->objects.size() > 0) {
 		cout << "WARNING: Leaked objects:" << endl;
@@ -495,10 +497,12 @@ extern "C" void cl_execute_string(const char* input, int length) {
 	}
 	// Check nil's reference count.
 	// TODO: Iterate over register_permanent_object objects.
+/*
 	if (ctx->data_ctx->nil->ref_count != 1)
 		cout << "WARNING: Ref count on nil not one: " << ctx->data_ctx->nil->ref_count << endl;
 	if (ctx->data_ctx->stop_iteration->ref_count != 1)
 		cout << "WARNING: Ref count on stop iteration not one: " << ctx->data_ctx->stop_iteration->ref_count << endl;
 //	cout << "Registered: " << ctx->data_ctx->objects_registered << " Freed: " << ctx->data_ctx->objects_freed << endl;
+*/
 }
 
