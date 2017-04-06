@@ -1,5 +1,7 @@
 // Some crappy language.
 
+#define DEBUG_OUTPUT
+
 #include <iterator>
 #include <iostream>
 #include <istream>
@@ -360,8 +362,8 @@ ClObj* ClContext::execute(ClRecord* scope, ClInstructionSequence* seq) {
 				break;
 			}
 			case OPCODE_INDEX("DOT_STORE"): {
-				ClObj* value_to_store = pop(stack);
 				ClObj* obj_to_store_in = pop(stack);
+				ClObj* value_to_store = pop(stack);
 				cl_store_to_object_table(obj_to_store_in, value_to_store, instruction.data_field);
 				value_to_store->dec_ref();
 				obj_to_store_in->dec_ref();

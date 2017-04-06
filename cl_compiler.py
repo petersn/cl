@@ -64,7 +64,10 @@ class SyntaxElement:
 					("identifier", str),
 					("ident_seq", list),
 				]))
-			self.args_variables = ClCompiler.compute_free_variables(self.args_seq, locals_only=False)
+			self.args_variables = set()
+			for entry in self.args_seq:
+				arg, = Matcher.match_with(entry, ("identifier", str))
+				self.args_variables.add(arg)
 
 	def takes_block(self):
 		return self.kind in self.syntax_element_takes_block
@@ -197,7 +200,11 @@ class ClCompiler:
 				self.append("DOT_LOAD \"%s\"" % (var,))
 
 		def store(self, var):
-			self.append("STORE %i   # %s" % (self.variable_table.index(var), var))
+			if var in self.variable_table:
+				self.append("STORE %i   # %s" % (self.variable_table.index(var), var))
+			else:
+				self.append("GET_GLOBAL")
+				self.append("DOT_STORE \"%s\"" % (var,))
 
 		def append(self, x):
 			for part in x.split("\n"):
@@ -296,6 +303,8 @@ class ClCompiler:
 				]))
 			return ClCompiler.compute_free_variables(expr, locals_only)
 		elif node_type == "list_comp_group":
+			# XXX: Currently this produces a local because it's used only in for loops.
+			# Later, when it's used in actually list comprehensions, it will have to change.
 			list_comp_var, expr = Matcher.match_with(ast,
 				("list_comp_group", [
 					("identifier", str),
@@ -446,12 +455,28 @@ class ClCompiler:
 				# The full inner variable table is just all the free variables used inside.
 				assert len(syntax_elem.args_seq) == 1, "For now only functions of one variable are supported."
 				argument_name, = Matcher.match_with(syntax_elem.args_seq[0], ("identifier", str))
-				inner_variable_table = list(syntax_elem.body_locals - set([argument_name]))
+				inner_variable_table = list(syntax_elem.body_free - set([argument_name]))
 				# Map the function argument to be the first entry in the variable table.
 				inner_variable_table = [argument_name] + inner_variable_table
 
 				# Compute the list of variables we're closing over.
-				closure_vars = syntax_elem.body_locals - syntax_elem.args_variables
+				print "\n\nDETERMINING THE CLOSURE VARIABLES."
+				print "I have this variable table:", ctx.variable_table
+				print "I have these body_locals:", syntax_elem.body_locals
+				print "I have these body_free:", syntax_elem.body_free
+				print "Args variables:", syntax_elem.args_variables
+
+				# We close precisely when the variable in question is referenced, but not
+				# assigned in the function, and we have the variable in our variable table.
+
+				closure_vars = syntax_elem.body_free - syntax_elem.body_locals - syntax_elem.args_variables
+				print "Closure candidates:", closure_vars
+				closure_vars &= set(ctx.variable_table)
+				print "Final closure:", closure_vars
+				print
+
+				print "Outer:", ctx.variable_table, "Inner:", inner_variable_table
+
 				transfer_records = [
 					(ctx.variable_table.index(var), inner_variable_table.index(var))
 					for var in closure_vars if var in ctx.variable_table
@@ -475,7 +500,7 @@ class ClCompiler:
 		assert all(isinstance(entry, SyntaxElement) for entry in syntax_elem_seq)
 
 		# First we compute the list of global variables.
-		global_vars = self.compute_free_variables(syntax_elem_seq, locals_only=True)
+		global_vars = set() # = self.compute_local_variables(syntax_elem_seq, locals_only=True)
 		# We now allocate them in some order for our global record.
 		global_variable_table = [None] + sorted(global_vars)
 		# Here the None corresponds to the argument our MAKE_FUNCTION will ignore.
