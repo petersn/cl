@@ -22,13 +22,19 @@ size_t ClMakeFunctionDescriptor::read_from(const char* data, size_t length) {
 		length -= sizeof(type); \
 	} while(0)
 
-	// First we read out the function name size.
-	uint32_t function_name_length;
-	READ_INTO(function_name_length, uint32_t);
-	// Then we read the actual data in.
-	function_name = string(data, function_name_length);
-	data += function_name_length;
-	length -= function_name_length;
+	uint32_t temp_length;
+
+#define READ_STRING(dest) \
+	READ_INTO(temp_length, uint32_t); \
+	dest = string(data, temp_length); \
+	data += temp_length; \
+	length -= temp_length;
+
+	// First we read in the function name.
+	READ_STRING(function_name);
+
+	// Then we read in the source file for the function.
+	READ_STRING(source_file_path);
 
 	// Next we read out the subscope size.
 	READ_INTO(subscope_length, uint32_t);
@@ -163,6 +169,7 @@ ClContext::ClContext() {
 #define MAKE_METHOD(kind, name, function) \
 	f = new ClFunction(); \
 	f->function_name = data_ctx->register_permanent_string(name); \
+	f->function_name = nullptr; \
 	data_ctx->register_object(f); \
 	f->is_method = true; \
 	f->native_executable_content = function; \
@@ -171,6 +178,7 @@ ClContext::ClContext() {
 #define MAKE_GLOBAL(name, function) \
 	f = new ClFunction(); \
 	f->function_name = data_ctx->register_permanent_string(name); \
+	f->source_file_path = nullptr; \
 	data_ctx->register_object(f); \
 	f->is_method = false; \
 	f->native_executable_content = function; \
@@ -202,20 +210,25 @@ static ClObj* pop(vector<ClObj*>& stack) {
 	return obj;
 }
 
-ClObj* ClContext::execute(const string* traceback_name, ClRecord* scope, ClInstructionSequence* seq) {
+ClObj* ClContext::execute(const string* traceback_name, const string* source_file_path, ClRecord* scope, ClInstructionSequence* seq) {
 #ifdef DEBUG_OUTPUT
 	cout << "=== exec ===" << endl;
 #endif
 
-	// Begin by adding a traceback entry.
-	data_ctx->traceback.push_back(ClTracebackEntry({traceback_name, new string("unknown file"), 42}));
+	// Begin by adding a traceback entry, if we're non-null.
+	ClTracebackEntry* traceback_entry = nullptr;
+	if (traceback_name != nullptr) {
+		data_ctx->traceback.push_back(ClTracebackEntry({traceback_name, source_file_path, 0}));
+		traceback_entry = &data_ctx->traceback.back();
+	}
 
 	// Main interpreter.
 	vector<ClObj*> stack;
 	unsigned int instruction_pointer = 0;
 	while (instruction_pointer < seq->instructions.size()) {
-		ClInstruction& instruction = seq->instructions[instruction_pointer];
-		instruction_pointer++;
+		ClInstruction& instruction = seq->instructions[instruction_pointer++];
+		if (traceback_entry != nullptr)
+			traceback_entry->line_number = instruction.line_number;
 
 #ifdef DEBUG_OUTPUT
 		cout << "[" << instruction_pointer-1 << "] Executing: " << cl_opcode_descs[instruction.opcode].name;
@@ -300,6 +313,8 @@ ClObj* ClContext::execute(const string* traceback_name, ClRecord* scope, ClInstr
 
 				// To make a function we produce a new record for its scope.
 				ClMakeFunctionDescriptor& desc = instruction.make_function_descriptor;
+				obj->function_name = &desc.function_name;
+				obj->source_file_path = &desc.source_file_path;
 				ClRecord* func_scope = new ClRecord(0, desc.subscope_length, data_ctx->nil);
 				data_ctx->register_object(func_scope);
 				// We then copy into the scope as per our closure descriptor.
@@ -505,11 +520,8 @@ extern "C" void cl_execute_string(const char* input, int length) {
 	auto ctx = new ClContext();
 	auto root_scope = new ClRecord(0, 0, ctx->data_ctx->nil);
 
-	// We come up with.
-	string root_traceback_name = "<bug bug bug this should never show up>";
-
 	// Execute the program!
-	ClObj* return_value = ctx->execute(&root_traceback_name, root_scope, program);
+	ClObj* return_value = ctx->execute(nullptr, nullptr, root_scope, program);
 	// Decrement the ref count so this last return value gets reaped.
 	return_value->dec_ref();
 

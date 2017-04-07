@@ -116,6 +116,7 @@ struct ClMakeFunctionDescriptor {
 	std::vector<std::pair<int, int>> subscope_closure_descriptor;
 	ClInstructionSequence* executable_content;
 	std::string function_name;
+	std::string source_file_path;
 
 	// This method decodes the descriptor from a string, and returns the number of bytes consumed.
 	// One obvious protocol would be to pass in a string, but then we might take $O(n^2)$ time to
@@ -148,7 +149,7 @@ public:
 	ClDataContext* data_ctx;
 
 	ClContext();
-	ClObj* execute(const std::string* traceback_name, ClRecord* scope, ClInstructionSequence* seq);
+	ClObj* execute(const std::string* traceback_name, const std::string* source_file_path, ClRecord* scope, ClInstructionSequence* seq);
 
 	// Operations.
 	ClObj* binary_plus(ClObj* left, ClObj* right);

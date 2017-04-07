@@ -136,6 +136,7 @@ struct ClFunction : public ClObj {
 	ClObj* (*native_executable_content)(ClFunction* this_function, ClObj* argument) = nullptr;
 	void* native_executable_cache = nullptr;
 	const std::string* function_name;
+	const std::string* source_file_path;
 
 	virtual ~ClFunction();
 	ClFunction() : ClObj(CL_FUNCTION) {}
@@ -158,7 +159,7 @@ struct ClStopIteration : public ClObj {
 
 struct ClTracebackEntry {
 	const std::string* function_name;
-	const std::string* file;
+	const std::string* source_file_path;
 	int line_number;
 };
 

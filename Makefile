@@ -1,15 +1,18 @@
 
-CPPFLAGS=-std=c++11 -g -Wall -Wextra -Wno-unused-parameter -fPIC
+CXXFLAGS=-std=c++11 -g -Wall -Wextra -Wno-unused-parameter -fPIC
 
 all: cl cl.so
 
 cl: cl.o structures.o operations.cpp Makefile
-	$(CXX) $(CPPFLAGS) -o $@ cl.o structures.o
+	$(CXX) $(CXXFLAGS) -o $@ cl.o structures.o
 
 cl.so: cl.o structures.o operations.cpp Makefile
-	$(CXX) -shared -Wl,-soname,$@ -o $@ cl.o structures.o
+	$(CXX) $(CXXFLAGS) -shared -Wl,-soname,$@ -o $@ cl.o structures.o
+
+bootstrap/bootstrap_base: bootstrap/bootstrap_base.o cl.o structures.o operations.cpp Makefile
+	$(CXX) $(CXXFLAGS) -o $@ bootstrap/bootstrap_base.o cl.o structures.o
 
 .PHONY: clean
 clean:
-	rm -f *.o cl
+	rm -f *.o cl cl.so bootstrap/bootstrap_base
 

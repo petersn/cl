@@ -192,7 +192,7 @@ ClObj* cl_perform_function_call(ClContext* ctx, ClObj* supposed_function, ClObj*
 		// We set the magic value 0 in the child_scope to be the passed in argument.
 		child_scope->store(0, argument);
 		// Do execution!
-		return_value = ctx->execute(function_obj->function_name, child_scope, function_obj->executable_content);
+		return_value = ctx->execute(function_obj->function_name, function_obj->source_file_path, child_scope, function_obj->executable_content);
 		// By deleting the child scope we effectively decrement the ref count on argument, completing our obligation.
 		delete child_scope;
 	}

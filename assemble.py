@@ -120,7 +120,7 @@ def make_assembly_unit(s):
 
 	return assembly_unit
 
-def assemble(assembly_unit):
+def assemble(assembly_unit, source_file_path):
 	output = []
 	for op in assembly_unit.ast:
 		# Encode the 1-byte opcode.
@@ -145,6 +145,10 @@ def assemble(assembly_unit):
 			# First include the function name.
 			data_field += struct.pack("<I", len(op["function_name"]))
 			data_field += op["function_name"]
+			# Next include the file path.
+			source_file_path = source_file_path
+			data_field += struct.pack("<I", len(source_file_path))
+			data_field += source_file_path
 			# Next, include the subscope length.
 			data_field += struct.pack("<I", op["subscope_length"])
 			# Then include the number of closure descriptors.
@@ -153,7 +157,7 @@ def assemble(assembly_unit):
 			for load_index, store_index in op["subscope_closure_descriptors"]:
 				data_field += struct.pack("<II", load_index, store_index)
 			# Finally, include the recursively compiled sub-AST.
-			data_field += assemble(op["contents"])
+			data_field += assemble(op["contents"], source_file_path)
 		else:
 			data_field = op["data_field"]
 
@@ -168,7 +172,7 @@ if __name__ == "__main__":
 		_input_source = f.read()	
 	_assembly_unit = make_assembly_unit(_input_source)
 	__import__("pprint").pprint(_assembly_unit)
-	_bytecode = assemble(_assembly_unit)
+	_bytecode = assemble(_assembly_unit, "<sourceless>")
 	print _bytecode.encode("hex")
 	with open("bytecode.clo", "w") as f:
 		f.write(_bytecode)

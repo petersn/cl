@@ -1,6 +1,7 @@
 // Data structures.
 
 #include "structures.h"
+#include <fstream>
 using namespace std;
 
 std::ostream& operator << (std::ostream& os, const ClObj& obj) {
@@ -173,6 +174,7 @@ ClFunction* ClFunction::produce_bound_method(ClObj* object_who_has_method) {
 	bound_method->native_executable_content = native_executable_content;
 	bound_method->native_executable_cache = native_executable_cache;
 	bound_method->function_name = function_name;
+	bound_method->source_file_path = source_file_path;
 
 	object_who_has_method->inc_ref();
 	return bound_method;
@@ -251,8 +253,19 @@ ClObj* ClDataContext::register_permanent_object(ClObj* obj) {
 
 const string* ClDataContext::register_permanent_string(string s) {
 	string* new_s = new string(s);
+	cout << "Writing out: " << *new_s << endl;
 	permanent_strings.push_back(new_s);
 	return new_s;
+}
+
+// Here we are not re-entrant, because it is assumed that we are about to crash.
+static void print_line_from_file(string path, int line_number) {
+	ifstream f(path);
+	string line;
+	for (int i = 0; i < line_number; i++)
+		if (not getline(f, line))
+			return;
+	cout << "    " << line << endl;
 }
 
 void ClDataContext::traceback_and_crash(string message) {
@@ -260,9 +273,16 @@ void ClDataContext::traceback_and_crash(string message) {
 	for (ClTracebackEntry& entry : traceback) {
 		if (entry.function_name == nullptr)
 			cerr << "  Null pointer in traceback." << endl;
-		else
-			cerr << "  " << *entry.function_name << " from \"" << *entry.file << "\", line " << entry.line_number << endl;
+		else {
+			cerr << "  " << *entry.function_name;
+			if (entry.source_file_path == nullptr)
+				cerr << " (builtin)" << endl;
+			else
+				cerr << " from \"" << *entry.source_file_path << "\", line " << entry.line_number << endl;
+		}
 		// TODO: Implement reading the actual lines from the files.
+		if (entry.source_file_path != nullptr and entry.line_number > 0)
+			print_line_from_file(*entry.source_file_path, entry.line_number);
 	}
 	cl_crash(message);
 }

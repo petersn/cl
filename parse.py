@@ -424,8 +424,11 @@ class Lexer:
 			name, regex = line.split("=", 1)
 			self.rules.append((name.strip(), re.compile(regex.strip())))
 
+	Token = collections.namedtuple("Token", ["cls", "string", "line_number"])
+
 	def lex(self, s):
 		tokens = []
+		line_number = 1
 		while s:
 			for name, regex in self.rules:
 				match = regex.match(s)
@@ -433,8 +436,9 @@ class Lexer:
 					# Tokens whose name ends with ~ are automatically dropped.
 					matched_length = match.end()
 					if not name.endswith("~"):
-						tokens.append((name, s[:matched_length]))
+						tokens.append(Lexer.Token(name, s[:matched_length], line_number))
 					# TODO: Replace this with string views, so this doesn't take $O(n^2)$ time...
+					line_number += s[:matched_length].count("\n")
 					s = s[matched_length:]
 					break
 			else:

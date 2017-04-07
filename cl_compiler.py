@@ -43,8 +43,9 @@ class SyntaxElement:
 	])
 	finalized = False
 
-	def __init__(self, ast):
+	def __init__(self, ast, line_number):
 		self.ast = ast
+		self.line_number = line_number
 		self.kind, = Matcher.match_with(ast, (str, Matcher.DropAny()))
 		self.block = [] if self.takes_block() else None
 
@@ -110,46 +111,56 @@ class ClParser:
 			exit(1)
 
 		# Split tokens by newline into syntactic elements.
-		syntax_elements = [[]]
+		class Accumulator:
+			def __init__(self):
+				self.tokens = []
+				self.max_line_number = -1
+
+		syntax_elements = [Accumulator()]
 		for t in tokens:
 			if t[0] == "newline":
 				# If the current syntax element is empty, then don't bother splitting into another!
-				if syntax_elements[-1] == []:
+				if syntax_elements[-1].tokens == []:
 					continue
-				syntax_elements.append([])
+				syntax_elements.append(Accumulator())
 			else:
-				syntax_elements[-1].append(t)
+				# Here we strip the line_number entry from the individual
+				# token, and update the accumulator's max_line)_number.
+				pair = (t.cls, t.string)
+				syntax_elements[-1].tokens.append(pair)
+				syntax_elements[-1].max_line_number = max(syntax_elements[-1].max_line_number, t.line_number)
 		# Strip the potential trailing empty syntax element.
-		if syntax_elements[-1] == []:
+		if syntax_elements[-1].tokens == []:
 			syntax_elements.pop(-1)
 
 		# Build a derivation for each syntax element.
 		derived_syntax_elements = []
 		for syntax_element in syntax_elements:
-			derivations = list(self.bnf_parser("syntax_element", syntax_element))
+			print syntax_element.tokens
+			derivations = list(self.bnf_parser("syntax_element", syntax_element.tokens))
 			if len(derivations) == 0:
-				print "Syntax error on:", self.detokenize(syntax_element)
+				print "Syntax error on:", self.detokenize(syntax_element.tokens)
 				exit(1)
 			elif len(derivations) > 1:
-				print "BUG BUG BUG: Ambiguous syntax on:", self.detokenize(syntax_element)
+				print "BUG BUG BUG: Ambiguous syntax on:", self.detokenize(syntax_element.tokens)
 				exit(1)
 			# Extract the unique derivation of this syntax element.
 			derivation = derivations[0]
 			# This becomes a derived syntax element.
-			derived_syntax_elements.append(derivation)
+			derived_syntax_elements.append((derivation, syntax_element.max_line_number))
 
 		# We now assemble the syntax elements into an AST, and in particular, enforce various block nesting rules at this point.
 		output = []
 		stack = [output]
 		syntax_elements = []
-		for derivation in derived_syntax_elements:
+		for derivation, max_line_number in derived_syntax_elements:
 			# This derivation will always be of the form ("syntax_element", [(kind of syntax element, [...])])
 			# Let's pull out this kind, while simultaneously sanity checking the structure.
 			main_element_kind, main_element_contents = Matcher.match_with(derivation,
 				("syntax_element", [(str, list)])
 			)
 			# Build a wrapped SyntaxElement object...
-			se = SyntaxElement((main_element_kind, main_element_contents))
+			se = SyntaxElement(ast=(main_element_kind, main_element_contents), line_number=max_line_number)
 			syntax_elements.append(se)
 			# ... and insert it at the appropriate place in the tree.
 			if se.kind != "end":
@@ -520,7 +531,7 @@ def source_to_bytecode(source):
 	bytecode_text = compiler.generate_overall_bytecode(ast)
 	print "Bytecode text:", bytecode_text
 	assembly_unit = assemble.make_assembly_unit(bytecode_text)
-	bytecode = assemble.assemble(assembly_unit)
+	bytecode = assemble.assemble(assembly_unit, "<sourceless>")
 	return bytecode
 
 if __name__ == "__main__":
