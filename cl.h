@@ -126,10 +126,10 @@ struct ClMakeFunctionDescriptor {
 };
 
 struct ClInstruction {
-	int opcode;
+	int opcode = OPCODE_INDEX("HALT");
 	cl_int_t args[MAX_OPCODE_ARGUMENT_COUNT] = {0};
-	std::string data_field;
-	int line_number;
+	std::string data_field = "";
+	int line_number = -1;
 
 	// These fields are specific to MAKE_FUNCTION calls.
 	ClMakeFunctionDescriptor make_function_descriptor;
