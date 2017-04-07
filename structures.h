@@ -8,6 +8,7 @@
 #include <iostream>
 #include <unordered_set>
 #include <vector>
+#include <list>
 #include <string>
 #include <unordered_map>
 
@@ -175,7 +176,7 @@ struct ClDataContext {
 	std::vector<std::string*> permanent_strings;
 
 	std::unordered_map<std::string, ClObj*>* default_type_tables;
-	std::vector<ClTracebackEntry> traceback;
+	std::list<ClTracebackEntry> traceback;
 
 	ClDataContext();
 	void unref_all_permanent_objects();
