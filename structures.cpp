@@ -253,7 +253,6 @@ ClObj* ClDataContext::register_permanent_object(ClObj* obj) {
 
 const string* ClDataContext::register_permanent_string(string s) {
 	string* new_s = new string(s);
-	cout << "Writing out: " << *new_s << endl;
 	permanent_strings.push_back(new_s);
 	return new_s;
 }

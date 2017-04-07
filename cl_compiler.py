@@ -136,7 +136,6 @@ class ClParser:
 		# Build a derivation for each syntax element.
 		derived_syntax_elements = []
 		for syntax_element in syntax_elements:
-			print syntax_element.tokens
 			derivations = list(self.bnf_parser("syntax_element", syntax_element.tokens))
 			if len(derivations) == 0:
 				print "Syntax error on:", self.detokenize(syntax_element.tokens)
@@ -399,6 +398,7 @@ class ClCompiler:
 		ctx.append("# [%s]" % ", ".join(map(str, ctx.variable_table)))
 
 		for syntax_elem in syntax_elem_seq:
+			ctx.append("LINE_NUMBER %i" % syntax_elem.line_number)
 			if syntax_elem.kind == "expr":
 				expr, = Matcher.match_with(syntax_elem.ast, ("expr", [tuple]))
 				# Generate the value then immediately drop it.
@@ -470,23 +470,11 @@ class ClCompiler:
 				# Map the function argument to be the first entry in the variable table.
 				inner_variable_table = [argument_name] + inner_variable_table
 
-				# Compute the list of variables we're closing over.
-				print "\n\nDETERMINING THE CLOSURE VARIABLES."
-				print "I have this variable table:", ctx.variable_table
-				print "I have these body_locals:", syntax_elem.body_locals
-				print "I have these body_free:", syntax_elem.body_free
-				print "Args variables:", syntax_elem.args_variables
-
 				# We close precisely when the variable in question is referenced, but not
 				# assigned in the function, and we have the variable in our variable table.
 
 				closure_vars = syntax_elem.body_free - syntax_elem.body_locals - syntax_elem.args_variables
-				print "Closure candidates:", closure_vars
 				closure_vars &= set(ctx.variable_table)
-				print "Final closure:", closure_vars
-				print
-
-				print "Outer:", ctx.variable_table, "Inner:", inner_variable_table
 
 				transfer_records = [
 					(ctx.variable_table.index(var), inner_variable_table.index(var))
@@ -524,14 +512,14 @@ class ClCompiler:
 		text = "\n".join(ClCompiler.flatten(output))
 		return text
 
-def source_to_bytecode(source):
+def source_to_bytecode(source, source_file_path="<sourceless>"):
 	parser = ClParser()
 	compiler = ClCompiler()
 	ast = parser.parse(source)
 	bytecode_text = compiler.generate_overall_bytecode(ast)
-	print "Bytecode text:", bytecode_text
+#	print "Bytecode text:", bytecode_text
 	assembly_unit = assemble.make_assembly_unit(bytecode_text)
-	bytecode = assemble.assemble(assembly_unit, "<sourceless>")
+	bytecode = assemble.assemble(assembly_unit, source_file_path)
 	return bytecode
 
 if __name__ == "__main__":

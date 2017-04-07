@@ -23,6 +23,6 @@ if __name__ == "__main__":
 	with open(sys.argv[1]) as f:
 		source_code = f.read()
 
-	bytecode = cl_compiler.source_to_bytecode(source_code)
+	bytecode = cl_compiler.source_to_bytecode(source_code, sys.argv[1])
 	cl_execute_string(bytecode)
 
