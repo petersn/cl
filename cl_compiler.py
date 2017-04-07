@@ -550,7 +550,6 @@ def factorial y
 	while y
 		accum = accum * y
 		y = y - 1
-		print 1(1)
 	end
 	return accum
 end

@@ -223,6 +223,12 @@ ClDataContext::ClDataContext() : objects_registered(0), objects_freed(0) {
 	default_type_tables = new unordered_map<string, ClObj*>[CL_KIND_COUNT];
 }
 
+ClDataContext::~ClDataContext() {
+	delete[] default_type_tables;
+	for (string* s : permanent_strings)
+		delete s;
+}
+
 void ClDataContext::unref_all_permanent_objects() {
 	// First we decrement references on every object registered with register_permanent_object.
 	for (ClObj* permanent_object : permanent_objects)

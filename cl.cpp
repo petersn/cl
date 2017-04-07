@@ -62,6 +62,13 @@ size_t ClMakeFunctionDescriptor::read_from(const char* data, size_t length) {
 	return original_length - length;
 }
 
+ClInstructionSequence::~ClInstructionSequence() {
+	// Recursively delete instruction sequences that might occur inside ClMakeFunctionDescriptors of our instructions.
+	for (ClInstruction& instr : instructions)
+		if (instr.make_function_descriptor.executable_content != nullptr)
+			delete instr.make_function_descriptor.executable_content;
+}
+
 ClInstructionSequence* ClInstructionSequence::decode_opcodes(const string& s) {
 	auto result = new ClInstructionSequence();
 	int line_number = -1;
@@ -200,6 +207,10 @@ ClContext::ClContext() {
 	cl_store_to_object_table(data_ctx->global_scope, data_ctx->nil, "nil");
 	cl_store_to_object_table(data_ctx->global_scope, data_ctx->static_booleans[0], "False");
 	cl_store_to_object_table(data_ctx->global_scope, data_ctx->static_booleans[1], "True");
+}
+
+ClContext::~ClContext() {
+	delete data_ctx;
 }
 
 static ClObj* pop(vector<ClObj*>& stack) {
@@ -484,7 +495,8 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 	for (auto& p : stack)
 		p->dec_ref();
 
-	data_ctx->traceback.pop_back();
+	if (traceback_name != nullptr)
+		data_ctx->traceback.pop_back();
 
 	// Return the top-of-stack (or nil) value.
 	// The caller shouldn't increment the reference on this object when it inserts it somewhere, because
@@ -536,5 +548,9 @@ extern "C" void cl_execute_string(const char* input, int length) {
 			cout << "    " << *obj << endl;
 		}
 	}
+
+	delete root_scope;
+	delete ctx;
+	delete program;
 }
 

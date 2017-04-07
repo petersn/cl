@@ -179,6 +179,7 @@ struct ClDataContext {
 	std::list<ClTracebackEntry> traceback;
 
 	ClDataContext();
+	~ClDataContext();
 	void unref_all_permanent_objects();
 	// In order to be tracked by the garbage collector, you must call register_object on each new ClObj allocated.
 	ClObj* register_object(ClObj* obj);

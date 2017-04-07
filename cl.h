@@ -112,11 +112,11 @@ namespace cl_template_trickery {
 // This is a descriptor for the MAKE_FUNCTION opcode, and thus the name should be interpreted
 // left associatively, that is, a ((make function) descriptor) not a (make (function descriptor)).
 struct ClMakeFunctionDescriptor {
-	uint32_t subscope_length;
+	uint32_t subscope_length = 0;
 	std::vector<std::pair<int, int>> subscope_closure_descriptor;
-	ClInstructionSequence* executable_content;
-	std::string function_name;
-	std::string source_file_path;
+	ClInstructionSequence* executable_content = nullptr;
+	std::string function_name = "";
+	std::string source_file_path = "";
 
 	// This method decodes the descriptor from a string, and returns the number of bytes consumed.
 	// One obvious protocol would be to pass in a string, but then we might take $O(n^2)$ time to
@@ -138,6 +138,7 @@ struct ClInstruction {
 struct ClInstructionSequence {
 	std::vector<ClInstruction> instructions;
 
+	~ClInstructionSequence();
 	static ClInstructionSequence* decode_opcodes(const std::string& s);
 	void pprint(std::ostream& os, int indentation=2) const;
 };
@@ -149,6 +150,7 @@ public:
 	ClDataContext* data_ctx;
 
 	ClContext();
+	~ClContext();
 	ClObj* execute(const std::string* traceback_name, const std::string* source_file_path, ClRecord* scope, ClInstructionSequence* seq);
 
 	// Operations.
