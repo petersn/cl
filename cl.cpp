@@ -182,6 +182,9 @@ ClContext::ClContext() {
 	f->native_executable_content = function; \
 	data_ctx->default_type_tables[kind][name] = f;
 
+#define SET_MEMEBER(kind, name, value) \
+	data_ctx->default_type_tables[kind][name] = value;
+
 #define MAKE_GLOBAL(name, function) \
 	f = new ClFunction(); \
 	f->function_name = data_ctx->register_permanent_string(name); \
@@ -199,6 +202,13 @@ ClContext::ClContext() {
 
 	MAKE_METHOD(CL_LIST, "append", cl_builtin_list_append)
 	MAKE_METHOD(CL_LIST, "iter", cl_builtin_list_iter)
+	MAKE_METHOD(CL_LIST, "sort", cl_builtin_list_sort)
+	MAKE_METHOD(CL_LIST, "copy", cl_builtin_list_copy)
+
+	// Set the type name strings.
+	ClString* s;
+	s = new ClString();
+	s->contents = "nil";
 
 	// Populate the global scope with builtin functions.
 	MAKE_GLOBAL("len", cl_builtin_len)
