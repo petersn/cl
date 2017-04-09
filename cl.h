@@ -3,14 +3,15 @@
 #ifndef _CL_MAIN_HEADER_H
 #define _CL_MAIN_HEADER_H
 
+#include <cstring>
+#include <vector>
+#include <string>
+
 // Forward declaration for the cyclic include of structures.h.
 struct ClInstructionSequence;
 void cl_crash(std::string message) __attribute__ ((noreturn));
 
 #include "structures.h"
-#include <string.h>
-#include <vector>
-#include <string>
 
 #define MAX_OPCODE_ARGUMENT_COUNT 4
 
@@ -148,10 +149,12 @@ std::ostream& operator << (std::ostream& os, const ClInstructionSequence& seq);
 class ClContext {
 public:
 	ClDataContext* data_ctx;
+	std::vector<void*> dlopened_handles;
 
 	ClContext();
 	~ClContext();
 	ClObj* execute(const std::string* traceback_name, const std::string* source_file_path, ClRecord* scope, ClInstructionSequence* seq);
+	void load_from_shared_object(std::string path, ClInstance* load_into_here);
 
 	// Operations.
 	ClObj* binary_plus(ClObj* left, ClObj* right);
@@ -181,6 +184,14 @@ ClObj* cl_builtin_len(ClFunction* this_function, ClObj* argument);
 extern "C" {
 
 void cl_execute_string(const char* input, int length);
+
+// This API is used for modules.
+
+typedef struct {
+	const char* name;
+	ClKind kind;
+	void* value;
+} ClSOEntry;
 
 }
 

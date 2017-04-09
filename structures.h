@@ -3,7 +3,7 @@
 #ifndef _CL_STRUCTURES_H
 #define _CL_STRUCTURES_H
 
-#include <stdint.h>
+#include <cstdint>
 #include <ostream>
 #include <iostream>
 #include <unordered_set>
@@ -13,14 +13,8 @@
 #include <unordered_map>
 
 // Forward declarations for the cyclic include of cl.h.
-class ClObj;
-class ClRecord;
-class ClFunction;
-class ClDataContext;
-typedef int64_t cl_int_t;
-
-#include "cl.h"
-
+// Unfortunately, standard C++ disallows forward declaration of enums.
+// Thus, this entire enum must be included here before the cyclic include.
 enum ClKind {
 	CL_NIL,
 	CL_INT,
@@ -34,6 +28,16 @@ enum ClKind {
 	CL_STOP_ITERATION,
 	CL_KIND_COUNT,
 };
+
+class ClObj;
+class ClRecord;
+class ClFunction;
+class ClInstance;
+class ClDataContext;
+typedef int64_t cl_int_t;
+
+// Do the cyclic include.
+#include "cl.h"
 
 const char* const cl_kind_to_name[CL_KIND_COUNT] = {
 	"Nil",
@@ -213,7 +217,7 @@ static inline T* assert_kind(ClObj* obj) {
 		error_message += std::string(cl_kind_to_name[cl_template_trickery::get_kind<T>::kind]);
 		error_message += ", instead got: ";
 		error_message += cl_kind_to_name[obj->kind];
-		obj->parent->traceback_and_crash(error_message.c_str());
+		obj->parent->traceback_and_crash(error_message);
 	};
 	return static_cast<T*>(obj);
 }

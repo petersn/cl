@@ -6,8 +6,12 @@
 #include <ostream>
 #include <sstream>
 #include <fstream>
-#include <unistd.h>
 #include "cl.h"
+
+extern "C" {
+#include <unistd.h>
+#include <dlfcn.h>
+}
 
 using namespace std;
 
@@ -182,8 +186,10 @@ ClContext::ClContext() {
 	f->native_executable_content = function; \
 	data_ctx->default_type_tables[kind][name] = f;
 
-#define SET_MEMEBER(kind, name, value) \
+/*
+#define SET_MEMBER(kind, name, value) \
 	data_ctx->default_type_tables[kind][name] = value;
+*/
 
 #define MAKE_GLOBAL(name, function) \
 	f = new ClFunction(); \
@@ -202,8 +208,8 @@ ClContext::ClContext() {
 
 	MAKE_METHOD(CL_LIST, "append", cl_builtin_list_append)
 	MAKE_METHOD(CL_LIST, "iter", cl_builtin_list_iter)
-	MAKE_METHOD(CL_LIST, "sort", cl_builtin_list_sort)
-	MAKE_METHOD(CL_LIST, "copy", cl_builtin_list_copy)
+//	MAKE_METHOD(CL_LIST, "sort", cl_builtin_list_sort)
+//	MAKE_METHOD(CL_LIST, "copy", cl_builtin_list_copy)
 
 	// Set the type name strings.
 	ClString* s;
@@ -221,6 +227,8 @@ ClContext::ClContext() {
 
 ClContext::~ClContext() {
 	delete data_ctx;
+	for (void* handle : dlopened_handles)
+		dlclose(handle);
 }
 
 static ClObj* pop(vector<ClObj*>& stack) {
@@ -514,6 +522,83 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 	return return_value;
 }
 
+void ClContext::load_from_shared_object(string path, ClInstance* load_into_here) {
+	// First we dlopen the given SO.
+	void* handle = dlopen(path.c_str(), RTLD_LAZY);
+	dlopened_handles.push_back(handle);
+
+	if (handle == nullptr) {
+		string error_message = "dlopen gave error: ";
+		error_message += dlerror();
+		cl_crash(error_message);
+	}
+
+	// Find the main table.
+	dlerror();
+	ClSOEntry* cl_table = (ClSOEntry*) dlsym(handle, "cl_table");
+	char* error = dlerror();
+	if (error != nullptr) {
+		string error_message = "couldn't load symbol cl_table: ";
+		error_message += dlerror();
+		cl_crash(error_message);
+	}
+
+	// Pull out all the symbols.
+	int index = 0;
+	while (true) {
+		ClSOEntry& entry = cl_table[index++];
+		// The table is ended by a sentinel entry with null name.
+		if (entry.name == nullptr)
+			break;
+
+		cout << "Loading " << entry.name << endl;
+
+		// If we're creating a new object, then we need to dec_ref after assigning into
+		// load_into_here's object table, because otherwise the ref count will be 2, not 1.
+		bool new_object_that_needs_dec_ref = false;
+		ClObj* obj;
+		switch (entry.kind) {
+			case CL_NIL: {
+				obj = data_ctx->nil;
+				break;
+			}
+			case CL_INT: {
+				ClInt* _obj = new ClInt();
+				obj = _obj;
+				data_ctx->register_object(obj);
+				_obj->value = (cl_int_t) entry.value;
+				new_object_that_needs_dec_ref = true;
+				break;
+			}
+			case CL_BOOL: {
+				obj = data_ctx->static_booleans[entry.value != 0];
+				break;
+			}
+			case CL_STRING: {
+				ClString* _obj = new ClString();
+				obj = _obj;
+				data_ctx->register_object(obj);
+				_obj->contents = (const char*) entry.value;
+				new_object_that_needs_dec_ref = true;
+				break;
+			}
+			case CL_FUNCTION: {
+				ClFunction* _obj = new ClFunction();
+				obj = _obj;
+				data_ctx->register_object(obj);
+				_obj->native_executable_content = (ClObj* (*)(ClFunction* this_function, ClObj* argument)) entry.value;
+				new_object_that_needs_dec_ref = true;
+				break;
+			}
+			default:
+				cl_crash("Bad kind in cl_table in shared object.");
+		}
+		cl_store_to_object_table(load_into_here, obj, entry.name);
+		if (new_object_that_needs_dec_ref)
+			obj->dec_ref();
+	}
+}
+
 // Include the various operations and functions.
 #include "operations.cpp"
 
@@ -541,6 +626,8 @@ extern "C" void cl_execute_string(const char* input, int length) {
 
 	auto ctx = new ClContext();
 	auto root_scope = new ClRecord(0, 0, ctx->data_ctx->nil);
+
+	ctx->load_from_shared_object("./stdlib.so", ctx->data_ctx->global_scope);
 
 	// Execute the program!
 	ClObj* return_value = ctx->execute(nullptr, nullptr, root_scope, program);
