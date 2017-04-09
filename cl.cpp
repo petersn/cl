@@ -522,6 +522,21 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 	return return_value;
 }
 
+template <typename T>
+static T dlsym_check(void* handle, const char* name) {
+	dlerror();
+	void* symbol = dlsym(handle, name);
+	char* error = dlerror();
+	if (error != nullptr) {
+		string error_message = "couldn't load symbol ";
+		error_message += name;
+		error_message += ": ";
+		error_message += error;
+		cl_crash(error_message);
+	}
+	return reinterpret_cast<T>(symbol);
+}
+
 void ClContext::load_from_shared_object(string path, ClInstance* load_into_here) {
 	// First we dlopen the given SO.
 	void* handle = dlopen(path.c_str(), RTLD_LAZY);
@@ -534,19 +549,12 @@ void ClContext::load_from_shared_object(string path, ClInstance* load_into_here)
 	}
 
 	// Find the main table.
-	dlerror();
-	ClSOEntry* cl_table = (ClSOEntry*) dlsym(handle, "cl_table");
-	char* error = dlerror();
-	if (error != nullptr) {
-		string error_message = "couldn't load symbol cl_table: ";
-		error_message += dlerror();
-		cl_crash(error_message);
-	}
+	ClSOEntry* cl_module_table = dlsym_check<ClSOEntry*>(handle, "cl_module_table");
 
 	// Pull out all the symbols.
 	int index = 0;
 	while (true) {
-		ClSOEntry& entry = cl_table[index++];
+		ClSOEntry& entry = cl_module_table[index++];
 		// The table is ended by a sentinel entry with null name.
 		if (entry.name == nullptr)
 			break;
@@ -591,11 +599,43 @@ void ClContext::load_from_shared_object(string path, ClInstance* load_into_here)
 				break;
 			}
 			default:
-				cl_crash("Bad kind in cl_table in shared object.");
+				cl_crash("Bad kind in cl_module_table in shared object.");
 		}
 		cl_store_to_object_table(load_into_here, obj, entry.name);
 		if (new_object_that_needs_dec_ref)
 			obj->dec_ref();
+	}
+
+	// Find an initialization routine.
+	void (*cl_module_init)(ClContext* ctx, ClInstance* load_into_here) =
+	             (void (*)(ClContext* ctx, ClInstance* load_into_here)) dlsym(handle, "cl_module_init");
+	if (cl_module_init != nullptr) {
+		cout << "Calling module init." << endl;
+		cl_module_init(this, load_into_here);
+	}
+
+	// Run some bytecode if requested.
+	char* cl_module_init_bytecode = (char*) dlsym(handle, "cl_module_init_bytecode");
+	if (cl_module_init_bytecode != nullptr) {
+		int* cl_module_init_bytecode_length = (int*) dlsym(handle, "cl_module_init_bytecode_length");
+		if (cl_module_init_bytecode_length == nullptr) {
+			cout << "No symbol cl_module_init_bytecode_length in shared object." << endl;
+			cout << "Add the following line to your source:" << endl;
+			cout << "  int cl_module_init_bytecode_length = sizeof(cl_module_init_bytecode) - 1;";
+			cl_crash("See above.");
+		}
+		string bytecode(cl_module_init_bytecode, *cl_module_init_bytecode_length);
+		auto program = ClInstructionSequence::decode_opcodes(bytecode);
+		cout << *program << endl;
+		auto root_scope = new ClRecord(0, 0, data_ctx->nil);
+		string traceback_name = "<";
+		traceback_name += path;
+		traceback_name += " embedded bytecode>";
+		string source_file_path = "<sourceless>";
+		ClObj* return_value = execute(&traceback_name, &source_file_path, root_scope, program);
+		return_value->dec_ref();
+		delete root_scope;
+		delete program;
 	}
 }
 
