@@ -667,7 +667,7 @@ extern "C" void cl_execute_string(const char* input, int length) {
 	auto ctx = new ClContext();
 	auto root_scope = new ClRecord(0, 0, ctx->data_ctx->nil);
 
-	ctx->load_from_shared_object("./stdlib.so", ctx->data_ctx->global_scope);
+//	ctx->load_from_shared_object("./stdlib.so", ctx->data_ctx->global_scope);
 
 	// Execute the program!
 	ClObj* return_value = ctx->execute(nullptr, nullptr, root_scope, program);

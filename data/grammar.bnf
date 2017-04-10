@@ -61,30 +61,41 @@ expr_p0%        ::= ternary
 expr% ::= expr_p0
 raw_expr:expr ::= expr_p0
 
+
+assignment ::= identifier:: "="~ expr
+
 // Define the block forming constructions.
 if_block ::= "if"~ expr
+else_block ::= "else"~
+elif_block ::= "elif"~ expr
 while_block ::= "while"~ expr
 for_block ::= "for"~ list_comp_group
 class_block ::= "class"~ identifier
 
 block_forming% ::= function_definition
 block_forming% ::= if_block
+block_forming% ::= else_block
+block_forming% ::= elif_block
 block_forming% ::= while_block
 block_forming% ::= for_block
 block_forming% ::= class_block
 
-assignment ::= identifier:: "="~ expr
 return ::= "return"~ | "return"~ expr
-
+break ::= "break"~ | "break"~ integer::
+continue ::= "continue"~ | "continue"~ integer::
 // XXX: This is just for debugging purposes right now.
 // Print should be a function...
 debug_print ::= "print"~ expr
 
+basic_single_line% ::= return
+basic_single_line% ::= break
+basic_single_line% ::= continue
+basic_single_line% ::= debug_print
+
 // Here are the various forms of a syntax element:
 syntax_element ::= raw_expr
 syntax_element ::= assignment
-syntax_element ::= return
 syntax_element ::= end
 syntax_element ::= block_forming
-syntax_element ::= debug_print
+syntax_element ::= basic_single_line
 

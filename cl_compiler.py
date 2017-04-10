@@ -2,7 +2,7 @@
 # Python based Cl byte code compiler.
 # This is a reference-only implementation in Python, before I launch into reimplementing this in C++.
 
-import pprint
+import pprint, collections
 import parse
 import assemble
 
@@ -38,6 +38,8 @@ class SyntaxElement:
 	syntax_element_takes_block = set([
 		"function_definition",
 		"if_block",
+		"else_block",
+		"elif_block",
 		"while_block",
 		"for_block",
 	])
@@ -48,6 +50,8 @@ class SyntaxElement:
 		self.line_number = line_number
 		self.kind, = Matcher.match_with(ast, (str, Matcher.DropAny()))
 		self.block = [] if self.takes_block() else None
+		self.else_trailer_block = None
+		self.else_parent_block = None
 
 	# This method is basically just for computing some values of function_definitions.
 	# You can add other handlers here if you want, though.
@@ -150,8 +154,9 @@ class ClParser:
 
 		# We now assemble the syntax elements into an AST, and in particular, enforce various block nesting rules at this point.
 		output = []
-		stack = [output]
-		syntax_elements = []
+		fake = collections.namedtuple("fake", ["block"])
+		stack = [fake(output)]
+		all_syntax_elements = []
 		for derivation, max_line_number in derived_syntax_elements:
 			# This derivation will always be of the form ("syntax_element", [(kind of syntax element, [...])])
 			# Let's pull out this kind, while simultaneously sanity checking the structure.
@@ -160,32 +165,38 @@ class ClParser:
 			)
 			# Build a wrapped SyntaxElement object...
 			se = SyntaxElement(ast=(main_element_kind, main_element_contents), line_number=max_line_number)
-			syntax_elements.append(se)
+			all_syntax_elements.append(se)
 			# ... and insert it at the appropriate place in the tree.
 			if se.kind != "end":
-				stack[-1].append(se)
+				stack[-1].block.append(se)
+
+			# However, if the syntax element is a block ender, then we simplify the tree.
+			if se.kind in ["end", "else_block", "elif_block"]:
+				if len(stack) > 1:
+					closing_syntax_element = stack.pop()
+					if se.kind in ["else_block", "elif_block"]:
+						if closing_syntax_element.kind not in ["if_block", "elif_block", "for_block", "while_block"]:
+							print "Misplaced else-style block, after: %s" % closing_syntax_element.kind
+						# Link the else-style block to its parent.
+						closing_syntax_element.else_trailer_block = se
+						se.else_parent_block = closing_syntax_element
+				else:
+					print "Misplaced %s, with no block to end." % se.kind
+					exit(1)
 
 			# If the syntax element wants a block, then we complexify our tree.
 			if se.takes_block():
-				stack.append(se.block)
-
-			# However, if the syntax element is an "end", then we simplify the tree.
-			elif se.kind == "end":
-				if len(stack) > 1:
-					stack.pop()
-				else:
-					print "Misplaced end, with no block to end."
-					exit(1)
+				stack.append(se)
 
 		# Finalize all the syntax elements.
-		for se in syntax_elements:
+		for se in all_syntax_elements:
 			se.finalize()
 
 		# Finally, we demand that the stack be simply [output] at the end, otherwise an end was mismatched.
 		if len(stack) > 1:
 			print "Unended block(s)."
 			exit(1)
-		assert stack == [output]
+		assert len(stack) == 1 and stack[0].block == output
 
 		return output
 
@@ -201,6 +212,8 @@ class ClCompiler:
 		def __init__(self, target, variable_table, indent=0):
 			self.target, self.variable_table = target, variable_table
 			self.indent = indent
+			self.break_labels = []
+			self.continue_labels = []
 
 		def load(self, var):
 			if var in self.variable_table:
@@ -267,7 +280,7 @@ class ClCompiler:
 				else:
 					# If we're computing the closure locals, then we add in those from inside recursively.
 					return set([ast.function_name]) | ClCompiler.compute_free_variables(ast.block, locals_only)
-			elif node_type in ("while_block", "if_block", "for_block"):
+			elif node_type in ("while_block", "if_block", "else_block", "elif_block", "for_block"):
 				return ClCompiler.compute_free_variables(ast.ast[1], locals_only) | ClCompiler.compute_free_variables(ast.block, locals_only)
 			raise ValueError("Unhandled syntax element type: %r" % (ast.ast,))
 
@@ -429,14 +442,34 @@ class ClCompiler:
 				expr, = Matcher.match_with(syntax_elem.ast, (syntax_elem.kind, [tuple]))
 				# Make a label to jump to for testing, and to jump to when done.
 				top_label = self.new_label()
-				bottom_label = self.new_label()
+				syntax_elem.bottom_label = self.new_label()
 				ctx.append("%s:" % top_label)
 				self.generate_bytecode_for_expr(expr, ctx)
-				ctx.append("JUMP_IF_FALSEY %s" % bottom_label)
+				ctx.append("JUMP_IF_FALSEY %s" % syntax_elem.bottom_label)
+				# Make new entries for continue and break.
+				if syntax_elem.kind == "while_block":
+					ctx.continue_labels.append(top_label)
+					ctx.break_labels.append(syntax_elem.bottom_label)
 				self.generate_bytecode_for_seq(syntax_elem.block, ctx)
 				if syntax_elem.kind == "while_block":
+					ctx.continue_labels.pop()
+					ctx.break_labels.pop()
 					ctx.append("JUMP %s" % top_label)
-				ctx.append("%s:" % bottom_label)
+				# If we have an else-trailer block, then we let them define where we jump.
+				if syntax_elem.else_trailer_block == None:
+					ctx.append("%s:" % syntax_elem.bottom_label)
+			elif syntax_elem.kind in ["else_block", "elif_block"]:
+				syntax_elem.bottom_label = self.new_label()
+				ctx.append("JUMP %s" % syntax_elem.bottom_label)
+				if syntax_elem.kind == "elif_block":
+					expr, = Matcher.match_with(syntax_elem.ast, ("elif_block", [tuple]))
+					self.generate_bytecode_for_expr(expr, ctx)
+					ctx.append("JUMP_IF_FALSEY %s" % syntax_elem.bottom_label)
+				# Produce the long-prophesied bottom label for our parent block.
+				ctx.append("%s: " % syntax_elem.else_parent_block.bottom_label)
+				self.generate_bytecode_for_seq(syntax_elem.block, ctx)
+				if syntax_elem.else_trailer_block == None:
+					ctx.append("%s: " % syntax_elem.bottom_label)
 			elif syntax_elem.kind == "for_block":
 				# Make a label for breaking out of the loop.
 				list_comp_var, expr = Matcher.match_with(syntax_elem.ast,
@@ -449,7 +482,11 @@ class ClCompiler:
 				top_label = self.new_label()
 				done_iterating_label = self.new_label()
 				# Generate the iterator object, then iterate over it.
+				ctx.continue_labels.append(top_label)
+				ctx.break_labels.append(done_iterating_label)
 				self.generate_bytecode_for_expr(expr, ctx)
+				ctx.continue_labels.pop()
+				ctx.break_labels.pop()
 				ctx.append("DOT_LOAD \"iter\"")
 				ctx.append("%s:" % top_label)
 				ctx.append("ITERATE %s" % done_iterating_label)
@@ -461,6 +498,17 @@ class ClCompiler:
 				ctx.append("%s:" % done_iterating_label)
 				# Drop the iterator object that just returned a ClStopIteration.
 				ctx.append("POP")
+			elif syntax_elem.kind in ["break", "continue"]:
+				number_list, = Matcher.match_with(syntax_elem.ast, (syntax_elem.kind, list))
+				goto_index = 1
+				if len(number_list) != 0:
+					goto_index, = Matcher.match_with(number_list, [("integer", str)])
+					goto_index = int(goto_index)
+				label_list = ctx.break_labels if syntax_elem.kind == "break" else ctx.continue_labels
+				if goto_index <= 0 or goto_index > len(label_list):
+					print "Break/continue index out of range."
+					exit(1)
+				ctx.append("JUMP %s" % label_list[-goto_index])
 			elif syntax_elem.kind == "function_definition":
 				# Generate an appropriate closure.
 				# The full inner variable table is just all the free variables used inside.
@@ -517,13 +565,29 @@ def source_to_bytecode(source, source_file_path="<sourceless>"):
 	compiler = ClCompiler()
 	ast = parser.parse(source)
 	bytecode_text = compiler.generate_overall_bytecode(ast)
-#	print "Bytecode text:", bytecode_text
+	print "Bytecode text:", bytecode_text
 	assembly_unit = assemble.make_assembly_unit(bytecode_text)
 	bytecode = assemble.assemble(assembly_unit, source_file_path)
 	return bytecode
 
 if __name__ == "__main__":
 	source = """
+
+l = []
+
+while len(l) < 10
+	if len(l) < 5
+		l.append(1)
+	else
+		break 1
+		l.append(2)
+	end
+end
+
+print l
+
+END_CL_INPUT
+
 # Huzzah for Cl!
 def build_adder x
 	def the_adder y
