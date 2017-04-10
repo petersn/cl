@@ -178,19 +178,17 @@ ClContext::ClContext() {
 	ClFunction* f;
 
 #define MAKE_METHOD(kind, name, function) \
-	f = new ClFunction(); \
+	f = data_ctx->create<ClFunction>(); \
 	f->function_name = data_ctx->register_permanent_string(name); \
 	f->source_file_path = nullptr; \
-	data_ctx->register_object(f); \
 	f->is_method = true; \
 	f->native_executable_content = function; \
 	data_ctx->default_type_tables[kind][name] = f;
 
 #define MAKE_MEMBER_FUNCTION(instance, name, function, should_be_a_method) \
-	f = new ClFunction(); \
+	f = data_ctx->create<ClFunction>(); \
 	f->function_name = data_ctx->register_permanent_string(name); \
 	f->source_file_path = nullptr; \
-	data_ctx->register_object(f); \
 	f->is_method = should_be_a_method; \
 	f->native_executable_content = function; \
 	instance->table[name] = f;
@@ -222,8 +220,7 @@ ClContext::ClContext() {
 	// This instance has a single "iter" method, that we extract.
 	MAKE_GLOBAL("upto", cl_builtin_upto)
 	// Give upto a closure over an appropriate instance.
-	ClInstance* upto_base = new ClInstance();
-	data_ctx->register_object(upto_base);
+	ClInstance* upto_base = data_ctx->create<ClInstance>();
 	f->closed_this = upto_base;
 	MAKE_MEMBER_FUNCTION(upto_base, "iter", cl_builtin_upto_base_iter, true)
 
@@ -309,44 +306,35 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 				break;
 			}
 			case OPCODE_INDEX("MAKE_INT"): {
-				auto obj = new ClInt();
-				data_ctx->register_object(obj);
-
+				auto obj = data_ctx->create<ClInt>();
 				obj->value = instruction.args[0];
 				stack.push_back(obj);
 				break;
 			}
 			case OPCODE_INDEX("MAKE_LIST"): {
-				auto obj = new ClList();
-				data_ctx->register_object(obj);
+				auto obj = data_ctx->create<ClList>();
 				stack.push_back(obj);
 				break;
 			}
 			case OPCODE_INDEX("MAKE_RECORD"): {
 				auto obj = new ClRecord(instruction.args[0], instruction.args[1], data_ctx->nil);
 				data_ctx->register_object(obj);
-
 				stack.push_back(obj);
 				break;
 			}
 			case OPCODE_INDEX("MAKE_MAP"): {
-				auto obj = new ClMap();
-				data_ctx->register_object(obj);
-
+				auto obj = data_ctx->create<ClMap>();
 				stack.push_back(obj);
 				break;
 			}
 			case OPCODE_INDEX("MAKE_STRING"): {
-				auto obj = new ClString();
-				data_ctx->register_object(obj);
-
+				auto obj = data_ctx->create<ClString>();
 				obj->contents = instruction.data_field;
 				stack.push_back(obj);
 				break;
 			}
 			case OPCODE_INDEX("MAKE_FUNCTION"): {
-				auto obj = new ClFunction();
-				data_ctx->register_object(obj);
+				auto obj = data_ctx->create<ClFunction>();
 
 				// To make a function we produce a new record for its scope.
 				ClMakeFunctionDescriptor& desc = instruction.make_function_descriptor;
@@ -579,9 +567,8 @@ void ClContext::load_from_shared_object(string path, ClInstance* load_into_here)
 				break;
 			}
 			case CL_INT: {
-				ClInt* _obj = new ClInt();
+				ClInt* _obj = data_ctx->create<ClInt>();
 				obj = _obj;
-				data_ctx->register_object(obj);
 				_obj->value = (cl_int_t) entry.value;
 				new_object_that_needs_dec_ref = true;
 				break;
@@ -591,17 +578,15 @@ void ClContext::load_from_shared_object(string path, ClInstance* load_into_here)
 				break;
 			}
 			case CL_STRING: {
-				ClString* _obj = new ClString();
+				ClString* _obj = data_ctx->create<ClString>();
 				obj = _obj;
-				data_ctx->register_object(obj);
 				_obj->contents = (const char*) entry.value;
 				new_object_that_needs_dec_ref = true;
 				break;
 			}
 			case CL_FUNCTION: {
-				ClFunction* _obj = new ClFunction();
+				ClFunction* _obj = data_ctx->create<ClFunction>();
 				obj = _obj;
-				data_ctx->register_object(obj);
 				_obj->native_executable_content = (ClObj* (*)(ClFunction* this_function, ClObj* argument)) entry.value;
 				new_object_that_needs_dec_ref = true;
 				break;

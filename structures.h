@@ -193,6 +193,8 @@ struct ClDataContext {
 	// This routine is just for producing strings that we want to free later.
 	const std::string* register_permanent_string(std::string s);
 
+	template <typename T> T* create();
+
 	void traceback_and_crash(std::string message) __attribute__ ((noreturn));
 };
 
@@ -222,6 +224,13 @@ static inline T* assert_kind(ClObj* obj) {
 		obj->parent->traceback_and_crash(error_message);
 	};
 	return static_cast<T*>(obj);
+}
+
+template <typename T>
+T* ClDataContext::create() {
+	T* obj = new T();
+	register_object(obj);
+	return obj;
 }
 
 #endif

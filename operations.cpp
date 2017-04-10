@@ -241,29 +241,27 @@ void cl_store_to_object_table(ClObj* object_to_store_in, ClObj* value_to_store, 
 // ===== Built-in functions =====
 
 ClObj* cl_builtin_nil_to_string(ClFunction* this_function, ClObj* _argument) {
+	ClDataContext* data_ctx = this_function->parent;
 	assert_kind<ClNil>(_argument);
-	ClString* result = new ClString();
-	this_function->parent->register_object(result);
+	ClString* result = data_ctx->create<ClString>();
 	result->contents = "nil";
 	return result;
 }
 
 ClObj* cl_builtin_int_to_string(ClFunction* this_function, ClObj* _argument) {
+	ClDataContext* data_ctx = this_function->parent;
 	assert_kind<ClNil>(_argument);
-
 	ClInt* argument = assert_kind<ClInt>(this_function->closed_this);
-	ClString* result = new ClString();
-	this_function->parent->register_object(result);
+	ClString* result = data_ctx->create<ClString>();
 	result->contents = to_string(argument->value);
 	return result;
 }
 
 ClObj* cl_builtin_bool_to_string(ClFunction* this_function, ClObj* _argument) {
+	ClDataContext* data_ctx = this_function->parent;
 	assert_kind<ClNil>(_argument);
-
 	ClBool* argument = assert_kind<ClBool>(this_function->closed_this);
-	ClString* result = new ClString();
-	this_function->parent->register_object(result);
+	ClString* result = data_ctx->create<ClString>();
 	if (argument->truth_value)
 		result->contents = "True";
 	else
@@ -272,11 +270,10 @@ ClObj* cl_builtin_bool_to_string(ClFunction* this_function, ClObj* _argument) {
 }
 
 ClObj* cl_builtin_list_to_string(ClFunction* this_function, ClObj* _argument) {
+	ClDataContext* data_ctx = this_function->parent;
 	assert_kind<ClNil>(_argument);
-
 	ClList* argument = assert_kind<ClList>(this_function->closed_this);
-	ClString* result = new ClString();
-	this_function->parent->register_object(result);
+	ClString* result = data_ctx->create<ClString>();
 	stringstream ss;
 	ss << "[";
 	for (size_t i = 0; i < argument->contents.size(); i++) {
@@ -322,6 +319,7 @@ ClObj* cl_builtin_list_iter(ClFunction* this_function, ClObj* argument) {
 }
 
 ClObj* cl_builtin_len(ClFunction* this_function, ClObj* argument) {
+	ClDataContext* data_ctx = this_function->parent;
 	cl_int_t value;
 	switch (argument->kind) {
 		case (CL_LIST): {
@@ -336,25 +334,21 @@ ClObj* cl_builtin_len(ClFunction* this_function, ClObj* argument) {
 			this_function->parent->traceback_and_crash("Type error on len.");
 			return nullptr; // Suppress compiler warning about no-return.
 	}
-	ClInt* result = new ClInt();
-	this_function->parent->register_object(result);
+	ClInt* result = data_ctx->create<ClInt>();
 	result->value = value;
 	return result;
 }
 
 ClObj* cl_builtin_upto(ClFunction* this_function, ClObj* argument) {
-	ClDataContext* ctx = this_function->parent;
+	ClDataContext* data_ctx = this_function->parent;
 	cl_int_t count_upto_argument = assert_kind<ClInt>(argument)->value;
-	ClInstance* result = new ClInstance();
-	ctx->register_object(result);
+	ClInstance* result = data_ctx->create<ClInstance>();
 	// Make the new result instance inherit from our closed this.
 	result->parent = assert_kind<ClInstance>(this_function->closed_this);
 	result->parent->inc_ref();
-	ClInt* counter = new ClInt();
-	ctx->register_object(counter);
+	ClInt* counter = data_ctx->create<ClInt>();
 	counter->value = 0;
-	ClInt* upto = new ClInt();
-	ctx->register_object(upto);
+	ClInt* upto = data_ctx->create<ClInt>();
 	upto->value = count_upto_argument;
 	result->table["i"] = counter;
 	result->table["upto"] = upto;
@@ -362,6 +356,7 @@ ClObj* cl_builtin_upto(ClFunction* this_function, ClObj* argument) {
 }
 
 ClObj* cl_builtin_upto_base_iter(ClFunction* this_function, ClObj* argument) {
+	ClDataContext* data_ctx = this_function->parent;
 	ClInstance& this_instance = *assert_kind<ClInstance>(this_function->closed_this);
 	// We now do some unsafe manipulations for efficiency.
 	// If our closed instances are mutated in illegal ways then this could fail horribly.
@@ -370,9 +365,8 @@ ClObj* cl_builtin_upto_base_iter(ClFunction* this_function, ClObj* argument) {
 	if (i->value < upto->value) {
 		// We're going to return i, so increment it before we assign over it in this_instance's table, to avoid freeing it accidentally.
 		i->inc_ref();
-		ClInt* next_counter_value = new ClInt();
+		ClInt* next_counter_value = data_ctx->create<ClInt>();
 		next_counter_value->value = i->value + 1;
-		this_function->parent->register_object(next_counter_value);
 		cl_store_to_object_table(&this_instance, next_counter_value, "i");
 		// Decrement the reference count, because it just got incremented by being inserted into the table.
 		next_counter_value->dec_ref();
