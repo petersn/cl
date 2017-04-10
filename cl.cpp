@@ -180,25 +180,23 @@ ClContext::ClContext() {
 #define MAKE_METHOD(kind, name, function) \
 	f = new ClFunction(); \
 	f->function_name = data_ctx->register_permanent_string(name); \
-	f->function_name = nullptr; \
+	f->source_file_path = nullptr; \
 	data_ctx->register_object(f); \
 	f->is_method = true; \
 	f->native_executable_content = function; \
 	data_ctx->default_type_tables[kind][name] = f;
 
-/*
-#define SET_MEMBER(kind, name, value) \
-	data_ctx->default_type_tables[kind][name] = value;
-*/
-
-#define MAKE_GLOBAL(name, function) \
+#define MAKE_MEMBER_FUNCTION(instance, name, function, should_be_a_method) \
 	f = new ClFunction(); \
 	f->function_name = data_ctx->register_permanent_string(name); \
 	f->source_file_path = nullptr; \
 	data_ctx->register_object(f); \
-	f->is_method = false; \
+	f->is_method = should_be_a_method; \
 	f->native_executable_content = function; \
-	data_ctx->global_scope->table[name] = f;
+	instance->table[name] = f;
+
+#define MAKE_GLOBAL(name, function) \
+	MAKE_MEMBER_FUNCTION(data_ctx->global_scope, name, function, false)
 
 	// Populate the methods for the basic types.
 	MAKE_METHOD(CL_NIL, "to_string", cl_builtin_nil_to_string)
@@ -218,6 +216,16 @@ ClContext::ClContext() {
 
 	// Populate the global scope with builtin functions.
 	MAKE_GLOBAL("len", cl_builtin_len)
+
+	// Upto is a complicated construction.
+	// Its "closed_this" points to an instance, which it returns children of.
+	// This instance has a single "iter" method, that we extract.
+	MAKE_GLOBAL("upto", cl_builtin_upto)
+	// Give upto a closure over an appropriate instance.
+	ClInstance* upto_base = new ClInstance();
+	data_ctx->register_object(upto_base);
+	f->closed_this = upto_base;
+	MAKE_MEMBER_FUNCTION(upto_base, "iter", cl_builtin_upto_base_iter, true)
 
 	// Populate the global scope with builtin values.
 	cl_store_to_object_table(data_ctx->global_scope, data_ctx->nil, "nil");
@@ -660,6 +668,8 @@ int main(int argc, char** argv) {
 extern "C" void cl_execute_string(const char* input, int length) {
 	string s(input, length);
 	auto program = ClInstructionSequence::decode_opcodes(s);
+	cout << *program;
+
 #ifdef DEBUG_OUTPUT
 	cout << *program;
 #endif
@@ -682,7 +692,7 @@ extern "C" void cl_execute_string(const char* input, int length) {
 	if (ctx->data_ctx->objects.size() > 0) {
 		cout << "WARNING: Leaked objects:" << endl;
 		for (ClObj* obj : ctx->data_ctx->objects) {
-			cout << "    " << *obj << endl;
+			cout << "    (" << obj << ") " << *obj << endl;
 		}
 	}
 

@@ -573,6 +573,12 @@ def source_to_bytecode(source, source_file_path="<sourceless>"):
 if __name__ == "__main__":
 	source = """
 
+for i <- upto(10)
+	print i
+end
+
+END_CL_INPUT
+
 l = []
 
 while len(l) < 10

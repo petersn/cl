@@ -151,6 +151,7 @@ struct ClFunction : public ClObj {
 
 struct ClInstance : public ClObj {
 	std::unordered_map<std::string, ClObj*> table;
+	ClInstance* parent = nullptr;
 
 	ClInstance() : ClObj(CL_INSTANCE) {}
 	virtual ~ClInstance();
@@ -207,6 +208,7 @@ namespace cl_template_trickery {
 	template <> struct get_kind<ClMap>           { constexpr static ClKind kind = CL_MAP; };
 	template <> struct get_kind<ClString>        { constexpr static ClKind kind = CL_STRING; };
 	template <> struct get_kind<ClFunction>      { constexpr static ClKind kind = CL_FUNCTION; };
+	template <> struct get_kind<ClInstance>      { constexpr static ClKind kind = CL_INSTANCE; };
 	template <> struct get_kind<ClStopIteration> { constexpr static ClKind kind = CL_STOP_ITERATION; };
 }
 

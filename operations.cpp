@@ -206,6 +206,10 @@ ClObj* cl_lookup_in_object_table(ClObj* object, const string& name) {
 	else
 		object_table = &object->parent->default_type_tables[object->kind];
 	auto result = object_table->find(name);
+	if (object->kind == CL_INSTANCE and
+	    result == object_table->end() and
+	    static_cast<ClInstance*>(object)->parent != nullptr)
+		return cl_lookup_in_object_table(static_cast<ClInstance*>(object)->parent, name);
 	if (result == object_table->end()) {
 		string message = "No attribute \"";
 		message += name;
@@ -336,5 +340,47 @@ ClObj* cl_builtin_len(ClFunction* this_function, ClObj* argument) {
 	this_function->parent->register_object(result);
 	result->value = value;
 	return result;
+}
+
+ClObj* cl_builtin_upto(ClFunction* this_function, ClObj* argument) {
+	ClDataContext* ctx = this_function->parent;
+	cl_int_t count_upto_argument = assert_kind<ClInt>(argument)->value;
+	ClInstance* result = new ClInstance();
+	ctx->register_object(result);
+	// Make the new result instance inherit from our closed this.
+	result->parent = assert_kind<ClInstance>(this_function->closed_this);
+	result->parent->inc_ref();
+	ClInt* counter = new ClInt();
+	ctx->register_object(counter);
+	counter->value = 0;
+	ClInt* upto = new ClInt();
+	ctx->register_object(upto);
+	upto->value = count_upto_argument;
+	result->table["i"] = counter;
+	result->table["upto"] = upto;
+	return result;
+}
+
+ClObj* cl_builtin_upto_base_iter(ClFunction* this_function, ClObj* argument) {
+	ClInstance& this_instance = *assert_kind<ClInstance>(this_function->closed_this);
+	// We now do some unsafe manipulations for efficiency.
+	// If our closed instances are mutated in illegal ways then this could fail horribly.
+	ClInt* i = assert_kind<ClInt>(this_instance.table["i"]);
+	ClInt* upto = assert_kind<ClInt>(this_instance.table["upto"]);
+	if (i->value < upto->value) {
+		// We're going to return i, so increment it before we assign over it in this_instance's table, to avoid freeing it accidentally.
+		i->inc_ref();
+		ClInt* next_counter_value = new ClInt();
+		next_counter_value->value = i->value + 1;
+		this_function->parent->register_object(next_counter_value);
+		cl_store_to_object_table(&this_instance, next_counter_value, "i");
+		// Decrement the reference count, because it just got incremented by being inserted into the table.
+		next_counter_value->dec_ref();
+		return i;
+	}
+	// Otherwise, stop iteration.
+	ClStopIteration* stop_iteration = this_function->parent->stop_iteration;
+	stop_iteration->inc_ref();
+	return stop_iteration;
 }
 

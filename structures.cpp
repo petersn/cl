@@ -185,6 +185,8 @@ ClFunction* ClFunction::produce_bound_method(ClObj* object_who_has_method) {
 ClInstance::~ClInstance() {
 	for (auto& pair : table)
 		pair.second->dec_ref();
+	if (parent != nullptr)
+		parent->dec_ref();
 }
 
 void ClInstance::pprint(ostream& os) const {

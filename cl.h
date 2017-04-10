@@ -179,6 +179,8 @@ ClObj* cl_builtin_list_to_string(ClFunction* this_function, ClObj* argument);
 ClObj* cl_builtin_list_append(ClFunction* this_function, ClObj* argument);
 ClObj* cl_builtin_list_iter(ClFunction* this_function, ClObj* argument);
 ClObj* cl_builtin_len(ClFunction* this_function, ClObj* argument);
+ClObj* cl_builtin_upto(ClFunction* this_function, ClObj* argument);
+ClObj* cl_builtin_upto_base_iter(ClFunction* this_function, ClObj* argument);
 
 // Our C API.
 extern "C" {
