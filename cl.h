@@ -33,42 +33,48 @@ constexpr ClOpcodeDesc cl_opcode_descs[] = {
 // These tags facilitate that parsing.
 // WARNING: Commenting out an opcode won't stop the Python assembler from thinking it's real!
 // BEGIN-PY-PARSING
-	ClOpcodeDesc({"HALT",           0,  0, false}),
-	ClOpcodeDesc({"NOP",            0,  0, false}),
-	ClOpcodeDesc({"POP",            0, -1, false}),
-	ClOpcodeDesc({"LOAD",           1,  1, false}),
-	ClOpcodeDesc({"STORE",          1, -1, false}),
-	ClOpcodeDesc({"MAKE_NIL",       0,  1, false}),
-	ClOpcodeDesc({"MAKE_INT",       1,  1, false}),
-	ClOpcodeDesc({"MAKE_LIST",      0,  1, false}),
-	ClOpcodeDesc({"MAKE_RECORD",    2,  1, false}),
-	ClOpcodeDesc({"MAKE_MAP",       0,  1, false}),
-	ClOpcodeDesc({"MAKE_STRING",    0,  1, true }),
-	ClOpcodeDesc({"MAKE_FUNCTION",  0,  1, true }),
-	ClOpcodeDesc({"CALL",           0, -1, false}),
-	ClOpcodeDesc({"ITERATE",        1,  0, false}),
-	ClOpcodeDesc({"STOP_ITERATION", 0,  0, false}),
-	ClOpcodeDesc({"LIST_APPEND",    0, -1, false}),
-	ClOpcodeDesc({"DOT_LOAD",       0,  0, true }),
-	ClOpcodeDesc({"DOT_STORE",      0, -2, true }),
-	ClOpcodeDesc({"GET_GLOBAL",     0,  1, false}),
-	ClOpcodeDesc({"BINARY_PLUS",    0, -1, false}),
-	ClOpcodeDesc({"BINARY_MINUS",   0, -1, false}),
-	ClOpcodeDesc({"BINARY_TIMES",   0, -1, false}),
-	ClOpcodeDesc({"BINARY_DIVIDE",  0, -1, false}),
-	ClOpcodeDesc({"BINARY_MODULO",  0, -1, false}),
-	ClOpcodeDesc({"BINARY_INDEX",   0, -1, false}),
-	ClOpcodeDesc({"BINARY_IN",      0, -1, false}),
-	ClOpcodeDesc({"BINARY_COMPARE", 1, -1, false}),
-	ClOpcodeDesc({"STORE_INDEX",    0, -2, false}),
-	ClOpcodeDesc({"JUMP",           1,  0, false}),
-	ClOpcodeDesc({"JUMP_IF_TRUTHY", 1, -1, false}),
-	ClOpcodeDesc({"JUMP_IF_FALSEY", 1, -1, false}),
-	ClOpcodeDesc({"RETURN",         0,  0, false}),
-	ClOpcodeDesc({"PRINT",          0, -1, false}),
+	ClOpcodeDesc({"HALT",            0,  0, false}),
+	ClOpcodeDesc({"NOP",             0,  0, false}),
+	ClOpcodeDesc({"POP",             0, -1, false}),
+	ClOpcodeDesc({"DUP",             0,  1, false}),
+	ClOpcodeDesc({"SWAP",            0,  0, false}),
+	ClOpcodeDesc({"LOAD",            1,  1, false}),
+	ClOpcodeDesc({"STORE",           1, -1, false}),
+	ClOpcodeDesc({"MAKE_NIL",        0,  1, false}),
+	ClOpcodeDesc({"MAKE_INT",        1,  1, false}),
+	ClOpcodeDesc({"MAKE_LIST",       0,  1, false}),
+	ClOpcodeDesc({"MAKE_RECORD",     2,  1, false}),
+	ClOpcodeDesc({"MAKE_MAP",        0,  1, false}),
+	ClOpcodeDesc({"MAKE_STRING",     0,  1, true }),
+	ClOpcodeDesc({"MAKE_FUNCTION",   0,  1, true }),
+	ClOpcodeDesc({"MAKE_INSTANCE",   0,  1, false}),
+	ClOpcodeDesc({"MAKE_INSTANCE_P", 0,  0, false}),
+	ClOpcodeDesc({"CALL",            0, -1, false}),
+	ClOpcodeDesc({"ITERATE",         1,  0, false}),
+	ClOpcodeDesc({"STOP_ITERATION",  0,  0, false}),
+	ClOpcodeDesc({"LIST_APPEND",     0, -1, false}),
+	ClOpcodeDesc({"DOT_LOAD",        0,  0, true }),
+	ClOpcodeDesc({"DOT_STORE",       0, -2, true }),
+	ClOpcodeDesc({"GET_GLOBAL",      0,  1, false}),
+	ClOpcodeDesc({"SET_GLOBAL",      0, -1, false}),
+	ClOpcodeDesc({"GET_THIS",        0,  1, false}),
+	ClOpcodeDesc({"BINARY_PLUS",     0, -1, false}),
+	ClOpcodeDesc({"BINARY_MINUS",    0, -1, false}),
+	ClOpcodeDesc({"BINARY_TIMES",    0, -1, false}),
+	ClOpcodeDesc({"BINARY_DIVIDE",   0, -1, false}),
+	ClOpcodeDesc({"BINARY_MODULO",   0, -1, false}),
+	ClOpcodeDesc({"BINARY_INDEX",    0, -1, false}),
+	ClOpcodeDesc({"BINARY_IN",       0, -1, false}),
+	ClOpcodeDesc({"BINARY_COMPARE",  1, -1, false}),
+	ClOpcodeDesc({"STORE_INDEX",     0, -2, false}),
+	ClOpcodeDesc({"JUMP",            1,  0, false}),
+	ClOpcodeDesc({"JUMP_IF_TRUTHY",  1, -1, false}),
+	ClOpcodeDesc({"JUMP_IF_FALSEY",  1, -1, false}),
+	ClOpcodeDesc({"RETURN",          0,  0, false}),
+	ClOpcodeDesc({"PRINT",           0, -1, false}),
 // This is a pseudo-opcode that exists purely in the input opcode stream.
 // It should be removed from the opcode stream before exection.
-	ClOpcodeDesc({"LINE_NUMBER",    1,-99, false}),
+	ClOpcodeDesc({"LINE_NUMBER",     1,-99, false}),
 // END-PY-PARSING
 };
 
@@ -153,7 +159,7 @@ public:
 
 	ClContext();
 	~ClContext();
-	ClObj* execute(const std::string* traceback_name, const std::string* source_file_path, ClRecord* scope, ClInstructionSequence* seq);
+	ClObj* execute(const std::string* traceback_name, const std::string* source_file_path, ClObj* closed_this, ClRecord* scope, ClInstructionSequence* seq);
 	void load_from_shared_object(std::string path, ClInstance* load_into_here);
 
 	// Operations.
@@ -179,6 +185,7 @@ ClObj* cl_builtin_list_to_string(ClFunction* this_function, ClObj* argument);
 ClObj* cl_builtin_list_append(ClFunction* this_function, ClObj* argument);
 ClObj* cl_builtin_list_iter(ClFunction* this_function, ClObj* argument);
 ClObj* cl_builtin_len(ClFunction* this_function, ClObj* argument);
+ClObj* cl_builtin_methodify(ClFunction* this_function, ClObj* argument);
 ClObj* cl_builtin_upto(ClFunction* this_function, ClObj* argument);
 ClObj* cl_builtin_upto_base_iter(ClFunction* this_function, ClObj* argument);
 

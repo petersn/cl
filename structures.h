@@ -151,7 +151,7 @@ struct ClFunction : public ClObj {
 
 struct ClInstance : public ClObj {
 	std::unordered_map<std::string, ClObj*> table;
-	ClInstance* parent = nullptr;
+	ClInstance* scope_parent = nullptr;
 
 	ClInstance() : ClObj(CL_INSTANCE) {}
 	virtual ~ClInstance();

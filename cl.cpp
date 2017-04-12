@@ -1,5 +1,7 @@
 // Some crappy language.
 
+#define DEBUG_OUTPUT
+
 #include <iterator>
 #include <iostream>
 #include <istream>
@@ -196,6 +198,11 @@ ClContext::ClContext() {
 #define MAKE_GLOBAL(name, function) \
 	MAKE_MEMBER_FUNCTION(data_ctx->global_scope, name, function, false)
 
+#define SET_TYPE_STRING(kind, type_string) \
+	s = data_ctx->create<ClString>(); \
+	s->contents = type_string; \
+	data_ctx->default_type_tables[kind]["type"] = s;
+
 	// Populate the methods for the basic types.
 	MAKE_METHOD(CL_NIL, "to_string", cl_builtin_nil_to_string)
 	MAKE_METHOD(CL_INT, "to_string", cl_builtin_int_to_string)
@@ -209,11 +216,20 @@ ClContext::ClContext() {
 
 	// Set the type name strings.
 	ClString* s;
-	s = new ClString();
-	s->contents = "nil";
+	SET_TYPE_STRING(CL_NIL, "nil")
+	SET_TYPE_STRING(CL_INT, "int")
+	SET_TYPE_STRING(CL_BOOL, "bool")
+	SET_TYPE_STRING(CL_LIST, "list")
+	SET_TYPE_STRING(CL_RECORD, "record")
+	SET_TYPE_STRING(CL_MAP, "map")
+	SET_TYPE_STRING(CL_STRING, "string")
+	SET_TYPE_STRING(CL_FUNCTION, "function")
+	// This type string should be overridden for each class.
+	SET_TYPE_STRING(CL_INSTANCE, "instance")
 
 	// Populate the global scope with builtin functions.
 	MAKE_GLOBAL("len", cl_builtin_len)
+	MAKE_GLOBAL("methodify", cl_builtin_methodify)
 
 	// Upto is a complicated construction.
 	// Its "closed_this" points to an instance, which it returns children of.
@@ -244,7 +260,7 @@ static ClObj* pop(vector<ClObj*>& stack) {
 	return obj;
 }
 
-ClObj* ClContext::execute(const string* traceback_name, const string* source_file_path, ClRecord* scope, ClInstructionSequence* seq) {
+ClObj* ClContext::execute(const string* traceback_name, const string* source_file_path, ClObj* closed_this, ClRecord* scope, ClInstructionSequence* seq) {
 #ifdef DEBUG_OUTPUT
 	cout << "=== exec ===" << endl;
 #endif
@@ -286,6 +302,21 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 			}
 			case OPCODE_INDEX("POP"): {
 				pop(stack)->dec_ref();
+				break;
+			}
+			case OPCODE_INDEX("DUP"): {
+				if (stack.size() == 0)
+					cl_crash("Stack underflow.");
+				ClObj* obj = stack.back();
+				obj->inc_ref();
+				stack.push_back(obj);
+				break;
+			}
+			case OPCODE_INDEX("SWAP"): {
+				ClObj* obj1 = pop(stack);
+				ClObj* obj2 = pop(stack);
+				stack.push_back(obj1);
+				stack.push_back(obj2);
 				break;
 			}
 			case OPCODE_INDEX("LOAD"): {
@@ -348,6 +379,19 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 				// Finally, we bind this scope into our function.
 				obj->executable_content = desc.executable_content;
 				obj->closure = func_scope;
+				stack.push_back(obj);
+				break;
+			}
+			case OPCODE_INDEX("MAKE_INSTANCE"): {
+				ClObj* obj = data_ctx->create<ClInstance>();
+				stack.push_back(obj);
+				break;
+			}
+			case OPCODE_INDEX("MAKE_INSTANCE_P"): {
+				ClInstance* parent = assert_kind<ClInstance>(pop(stack));
+				ClInstance* obj = data_ctx->create<ClInstance>();
+				obj->scope_parent = parent;
+				// We don't inc or dec the ref count on parent, because being refed in obj makes up for being popped off the stack.
 				stack.push_back(obj);
 				break;
 			}
@@ -434,6 +478,19 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 			case OPCODE_INDEX("GET_GLOBAL"): {
 				data_ctx->global_scope->inc_ref();
 				stack.push_back(data_ctx->global_scope);
+				break;
+			}
+			case OPCODE_INDEX("SET_GLOBAL"): {
+				data_ctx->global_scope->dec_ref();
+				ClInstance* new_scope = assert_kind<ClInstance>(pop(stack));
+				data_ctx->global_scope = new_scope;
+				// Being popped makes up for the new ref, so don't change the ref count on new_scope.
+				break;
+			}
+			case OPCODE_INDEX("GET_THIS"): {
+				ClObj* to_push = closed_this == nullptr ? data_ctx->nil : closed_this;
+				to_push->inc_ref();
+				stack.push_back(to_push);
 				break;
 			}
 #define BINARY_OPERATION(name, func) \
@@ -625,7 +682,7 @@ void ClContext::load_from_shared_object(string path, ClInstance* load_into_here)
 		traceback_name += path;
 		traceback_name += " embedded bytecode>";
 		string source_file_path = "<sourceless>";
-		ClObj* return_value = execute(&traceback_name, &source_file_path, root_scope, program);
+		ClObj* return_value = execute(&traceback_name, &source_file_path, nullptr, root_scope, program);
 		return_value->dec_ref();
 		delete root_scope;
 		delete program;
@@ -655,17 +712,13 @@ extern "C" void cl_execute_string(const char* input, int length) {
 	auto program = ClInstructionSequence::decode_opcodes(s);
 	cout << *program;
 
-#ifdef DEBUG_OUTPUT
-	cout << *program;
-#endif
-
 	auto ctx = new ClContext();
 	auto root_scope = new ClRecord(0, 0, ctx->data_ctx->nil);
 
 //	ctx->load_from_shared_object("./stdlib.so", ctx->data_ctx->global_scope);
 
 	// Execute the program!
-	ClObj* return_value = ctx->execute(nullptr, nullptr, root_scope, program);
+	ClObj* return_value = ctx->execute(nullptr, nullptr, nullptr, root_scope, program);
 	// Decrement the ref count so this last return value gets reaped.
 	return_value->dec_ref();
 
@@ -680,6 +733,8 @@ extern "C" void cl_execute_string(const char* input, int length) {
 			cout << "    (" << obj << ") " << *obj << endl;
 		}
 	}
+
+	cout << "Freed: " << ctx->data_ctx->objects_freed << endl;
 
 	delete root_scope;
 	delete ctx;

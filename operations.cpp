@@ -176,6 +176,14 @@ bool cl_coerce_to_boolean(ClObj* obj) {
 }
 
 ClObj* cl_perform_function_call(ClContext* ctx, ClObj* supposed_function, ClObj* argument) {
+	// If it's an instance, then calling is subclassing/instantiation.
+	if (supposed_function->kind == CL_INSTANCE) {
+		ClInstance* instance_obj = assert_kind<ClInstance>(supposed_function);
+		ClInstance* result = supposed_function->parent->create<ClInstance>();
+		result->scope_parent = instance_obj;
+		instance_obj->inc_ref();
+		return result;
+	}
 	ClFunction* function_obj = assert_kind<ClFunction>(supposed_function);
 	ClObj* return_value;
 	// We now do an important case check, to determine if function_obj is a native function, or Cl function.
@@ -192,7 +200,7 @@ ClObj* cl_perform_function_call(ClContext* ctx, ClObj* supposed_function, ClObj*
 		// We set the magic value 0 in the child_scope to be the passed in argument.
 		child_scope->store(0, argument);
 		// Do execution!
-		return_value = ctx->execute(function_obj->function_name, function_obj->source_file_path, child_scope, function_obj->executable_content);
+		return_value = ctx->execute(function_obj->function_name, function_obj->source_file_path, function_obj->closed_this, child_scope, function_obj->executable_content);
 		// By deleting the child scope we effectively decrement the ref count on argument, completing our obligation.
 		delete child_scope;
 	}
@@ -208,8 +216,8 @@ ClObj* cl_lookup_in_object_table(ClObj* object, const string& name) {
 	auto result = object_table->find(name);
 	if (object->kind == CL_INSTANCE and
 	    result == object_table->end() and
-	    static_cast<ClInstance*>(object)->parent != nullptr)
-		return cl_lookup_in_object_table(static_cast<ClInstance*>(object)->parent, name);
+	    static_cast<ClInstance*>(object)->scope_parent != nullptr)
+		return cl_lookup_in_object_table(static_cast<ClInstance*>(object)->scope_parent, name);
 	if (result == object_table->end()) {
 		string message = "No attribute \"";
 		message += name;
@@ -339,13 +347,20 @@ ClObj* cl_builtin_len(ClFunction* this_function, ClObj* argument) {
 	return result;
 }
 
+ClObj* cl_builtin_methodify(ClFunction* this_function, ClObj* argument) {
+	ClFunction* func = assert_kind<ClFunction>(argument);
+	func->is_method = true;
+	func->inc_ref();
+	return func;
+}
+
 ClObj* cl_builtin_upto(ClFunction* this_function, ClObj* argument) {
 	ClDataContext* data_ctx = this_function->parent;
 	cl_int_t count_upto_argument = assert_kind<ClInt>(argument)->value;
 	ClInstance* result = data_ctx->create<ClInstance>();
 	// Make the new result instance inherit from our closed this.
-	result->parent = assert_kind<ClInstance>(this_function->closed_this);
-	result->parent->inc_ref();
+	result->scope_parent = assert_kind<ClInstance>(this_function->closed_this);
+	result->scope_parent->inc_ref();
 	ClInt* counter = data_ctx->create<ClInt>();
 	counter->value = 0;
 	ClInt* upto = data_ctx->create<ClInt>();

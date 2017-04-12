@@ -45,6 +45,7 @@ expr_p1% ::= expr_p2
 expr_p0% ::= expr_p1
 
 expr_p9:literal ::= identifier:: | string:: | integer::
+expr_p9:this    ::= "@"~
 expr_p9%        ::= dot_accessor | indexing
 expr_p8%        ::= function_call
 expr_p7%        ::= interval | list_comp | list_literal
@@ -63,6 +64,7 @@ raw_expr:expr ::= expr_p0
 
 
 assignment ::= identifier:: "="~ expr
+extended_assignment ::= expr "."~ identifier:: "="~ expr
 
 // Define the block forming constructions.
 if_block ::= "if"~ expr
@@ -70,7 +72,7 @@ else_block ::= "else"~
 elif_block ::= "elif"~ expr
 while_block ::= "while"~ expr
 for_block ::= "for"~ list_comp_group
-class_block ::= "class"~ identifier
+class_block ::= "class"~ identifier::
 
 block_forming% ::= function_definition
 block_forming% ::= if_block
@@ -92,10 +94,14 @@ basic_single_line% ::= break
 basic_single_line% ::= continue
 basic_single_line% ::= debug_print
 
+literal_cl_assembly ::= literal_cl_assembly::
+
 // Here are the various forms of a syntax element:
 syntax_element ::= raw_expr
 syntax_element ::= assignment
+syntax_element ::= extended_assignment
 syntax_element ::= end
 syntax_element ::= block_forming
 syntax_element ::= basic_single_line
+syntax_element ::= literal_cl_assembly
 

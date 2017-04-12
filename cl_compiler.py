@@ -37,6 +37,7 @@ class Matcher:
 class SyntaxElement:
 	syntax_element_takes_block = set([
 		"function_definition",
+		"class_block",
 		"if_block",
 		"else_block",
 		"elif_block",
@@ -273,6 +274,15 @@ class ClCompiler:
 						tuple,
 					]))
 				return set([variable_name]) | ClCompiler.compute_free_variables(expr, locals_only)
+			elif node_type == "extended_assignment":
+				index_expr, index_name, value_expr = Matcher.match_with(ast.ast,
+				("extended_assignment", [
+					tuple,
+					("identifier", str),
+					tuple,
+				]))
+				return ClCompiler.compute_free_variables(index_expr, locals_only) | \
+				       ClCompiler.compute_free_variables(value_expr, locals_only)
 			elif node_type == "function_definition":
 				ast.finalize()
 				if not locals_only:
@@ -280,7 +290,7 @@ class ClCompiler:
 				else:
 					# If we're computing the closure locals, then we add in those from inside recursively.
 					return set([ast.function_name]) | ClCompiler.compute_free_variables(ast.block, locals_only)
-			elif node_type in ("while_block", "if_block", "else_block", "elif_block", "for_block"):
+			elif node_type in ("while_block", "if_block", "else_block", "elif_block", "for_block", "class_block"):
 				return ClCompiler.compute_free_variables(ast.ast[1], locals_only) | ClCompiler.compute_free_variables(ast.block, locals_only)
 			raise ValueError("Unhandled syntax element type: %r" % (ast.ast,))
 
@@ -334,7 +344,7 @@ class ClCompiler:
 					tuple,
 				]))
 			return set([list_comp_var]) | ClCompiler.compute_free_variables(expr, locals_only)
-		elif node_type in ["integer", "string"]:
+		elif node_type in ["integer", "string", "this"]:
 			return set()
 		raise ValueError("Unhandled node type: %r" % (node_type,))
 
@@ -399,12 +409,14 @@ class ClCompiler:
 				ctx.append(mapping[operation])
 			else:
 				raise ValueError("Unhandled binary operation type: %r" % (operation,))
+		elif node_type == "this":
+			ctx.append("GET_THIS")
 		else:
 			raise ValueError("Unhandled expr node_type type: %r" % (node_type,))
 
 #		ctx.append("# EXPR: %r" % (expr,))
 
-	def generate_bytecode_for_seq(self, syntax_elem_seq, ctx):
+	def generate_bytecode_for_seq(self, syntax_elem_seq, ctx, class_mode=False):
 		# Confirm that our input is a list of syntax elements.
 		assert isinstance(syntax_elem_seq, list)
 		assert all(isinstance(entry, SyntaxElement) for entry in syntax_elem_seq)
@@ -438,6 +450,17 @@ class ClCompiler:
 					]))
 				self.generate_bytecode_for_expr(expr, ctx)
 				ctx.store(variable_name)
+			elif syntax_elem.kind == "extended_assignment":
+				index_expr, index_name, value_expr = Matcher.match_with(syntax_elem.ast,
+					("extended_assignment", [
+						tuple,
+						("identifier", str),
+						tuple,
+					]))
+				self.generate_bytecode_for_expr(index_expr, ctx)
+				self.generate_bytecode_for_expr(value_expr, ctx)
+				ctx.append("SWAP")
+				ctx.append("DOT_STORE \"%s\"" % index_name)
 			elif syntax_elem.kind in ["while_block", "if_block"]:
 				expr, = Matcher.match_with(syntax_elem.ast, (syntax_elem.kind, [tuple]))
 				# Make a label to jump to for testing, and to jump to when done.
@@ -536,8 +559,33 @@ class ClCompiler:
 				# Finally, we flatten our definition.
 				def_string = "\n".join(self.flatten(definition))
 				ctx.append(def_string)
+				# If we're in class mode, then we mark the function as a method.
+				if class_mode:
+					ctx.load("methodify")
+					ctx.append("SWAP")
+					ctx.append("CALL")
 				# We now have the function on the stack, so assign it into its name.
 				ctx.store(syntax_elem.function_name)
+			elif syntax_elem.kind == "class_block":
+				class_name, = Matcher.match_with(syntax_elem.ast, ("class_block", [("identifier", str)]))
+				# Change the global scope appropriately.
+				ctx.append("GET_GLOBAL")
+				ctx.append("DUP")
+				ctx.append("MAKE_INSTANCE_P")
+				ctx.append("DUP")
+				# Stack: [old global, new global, new global]
+				# Store the class name before we modify the global context!
+				ctx.store(class_name)
+				ctx.append("SET_GLOBAL")
+				# Now begin our definitions.
+				self.generate_bytecode_for_seq(syntax_elem.block, ctx, class_mode=True)
+				# Finally, reset the global scope.
+				ctx.append("SET_GLOBAL")
+			elif syntax_elem.kind == "literal_cl_assembly":
+				asm, = Matcher.match_with(syntax_elem.ast, ("literal_cl_assembly", [("literal_cl_assembly", str)]))
+				assert asm.startswith(">>>")
+				asm = asm[3:]
+				ctx.append(asm)
 			else:
 				raise ValueError("Unhandled case: %r" % (syntax_elem.kind,))
 
@@ -573,11 +621,25 @@ def source_to_bytecode(source, source_file_path="<sourceless>"):
 if __name__ == "__main__":
 	source = """
 
+class Foo
+	value = 0
+
+	def add x
+		@.value = @.value + x
+		return @.value
+	end
+end
+
+f = Foo(nil)
+
+print f.add(10)
+print f.add(10)
+
+END_CL_INPUT
+
 for i <- upto(10)
 	print i
 end
-
-END_CL_INPUT
 
 l = []
 
