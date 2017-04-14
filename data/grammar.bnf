@@ -22,7 +22,9 @@ comma_separated_values% ::= expr | expr ","~ comma_separated_values
 list_literal ::= "["~ comma_separated_values "]"~ | "["~ "]"~
 ternary ::= "if"~ expr "then"~ expr "else"~ expr
 
-list_comp_group ::= identifier:: "<"~ "-"~ expr
+unpack_spec_or_variable% ::= unpack_spec | identifier::
+
+list_comp_group ::= unpack_spec_or_variable "<"~ "-"~ expr
 list_comp_groups% ::= list_comp_group | list_comp_group ","~ list_comp_groups
 list_comp ::= "["~ expr pipe::~ list_comp_groups "]"~
 
@@ -65,7 +67,7 @@ raw_expr:expr ::= expr_p0
 assignment_target% ::= variable | dot_accessor | indexing
 
 assignment ::= assignment_target "="~ expr
-unpack_spec_rec% ::= ","~ assignment_target | ","~ assigment_target unpack_spec_rec
+unpack_spec_rec% ::= ","~ assignment_target | ","~ assignment_target unpack_spec_rec
 unpack_spec ::= assignment_target unpack_spec_rec | assignment_target ","~
 unpack_assignment ::= unpack_spec "="~ expr
 

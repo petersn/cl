@@ -1,6 +1,6 @@
 // Some crappy language.
 
-#define DEBUG_OUTPUT
+//#define DEBUG_OUTPUT
 
 #include <iterator>
 #include <iostream>

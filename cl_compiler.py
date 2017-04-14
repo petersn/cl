@@ -371,6 +371,23 @@ class ClCompiler:
 		else:
 			raise Exception("Unhandled assignment target type: %r." % (target_type,))
 
+	def generate_consumer_for_unpack_spec(self, unpack_spec, ctx):
+		ctx.append("DOT_LOAD \"iter\"")
+		# Make a label for unpack too few.
+		too_few_label = self.new_label()
+		# Begin pulling out values, and assigning.
+		for assignment_target in unpack_spec:
+			ctx.append("ITERATE %s" % too_few_label)
+			self.generate_consumer_for_assignment_target(assignment_target, ctx)
+		# Finally, iterate one last time, to rule out too many.
+		good_label = self.new_label()
+		ctx.append("ITERATE %s" % good_label)
+		ctx.append("TRACEBACK \"Too many values to unpack.\"")
+		ctx.append("%s:" % too_few_label)
+		ctx.append("TRACEBACK \"Too few values to unpack.\"")
+		ctx.append("%s:" % good_label)
+		ctx.append("POP")
+
 	def generate_bytecode_for_expr(self, expr, ctx):
 		node_type, = Matcher.match_with(expr, (str, Matcher.DropAny()))
 
@@ -391,6 +408,36 @@ class ClCompiler:
 			for entry_expr in expr[1]:
 				self.generate_bytecode_for_expr(entry_expr, ctx)
 				ctx.append("LIST_APPEND")
+		elif node_type == "list_comp":
+			__import__("pprint").pprint(expr)
+			term_expr, unpack_spec_or_variable, iter_expr = Matcher.match_with(expr,
+				("list_comp", [
+					tuple,
+					("list_comp_group", [
+						tuple,
+						tuple,
+					]),
+				]))
+			ctx.append("MAKE_LIST")
+			self.generate_bytecode_for_expr(iter_expr, ctx)
+			top_label = self.new_label()
+			done_iterating_label = self.new_label()
+			ctx.append("DOT_LOAD \"iter\"")
+			ctx.append("%s:" % top_label)
+			ctx.append("ITERATE %s" % done_iterating_label)
+			# Then assign the yielded value into the iteration variable.
+			if unpack_spec_or_variable[0] == "unpack_spec":
+				self.generate_consumer_for_unpack_spec(unpack_spec_or_variable[1], ctx)
+			else:
+				var, = Matcher.match_with(unpack_spec_or_variable, ("identifier", str))
+				ctx.store(var)
+			ctx.append("SWAP")
+			self.generate_bytecode_for_expr(term_expr, ctx)
+			ctx.append("LIST_APPEND")
+			ctx.append("SWAP")
+			ctx.append("JUMP %s" % top_label)
+			ctx.append("%s:" % done_iterating_label)
+			ctx.append("POP")
 		elif node_type == "function_call":
 			expr1, expr2 = Matcher.match_with(expr, ("function_call", [tuple, tuple]))
 			self.generate_bytecode_for_expr(expr1, ctx)
@@ -499,21 +546,7 @@ class ClCompiler:
 					]))
 				# First, we evaluate expr, and then we iterate over it.
 				self.generate_bytecode_for_expr(expr, ctx)
-				ctx.append("DOT_LOAD \"iter\"")
-				# Make a label for unpack too few.
-				too_few_label = self.new_label()
-				# Begin pulling out values, and assigning.
-				for assignment_target in unpack_spec:
-					ctx.append("ITERATE %s" % too_few_label)
-					self.generate_consumer_for_assignment_target(assignment_target, ctx)
-				# Finally, iterate one last time, to rule out too many.
-				good_label = self.new_label()
-				ctx.append("ITERATE %s" % good_label)
-				ctx.append("TRACEBACK \"Too many values to unpack.\"")
-				ctx.append("%s:" % too_few_label)
-				ctx.append("TRACEBACK \"Too few values to unpack.\"")
-				ctx.append("%s:" % good_label)
-				ctx.append("POP")
+				self.generate_consumer_for_unpack_spec(unpack_spec, ctx)
 			elif syntax_elem.kind in ["while_block", "if_block"]:
 				expr, = Matcher.match_with(syntax_elem.ast, (syntax_elem.kind, [tuple]))
 				# Make a label to jump to for testing, and to jump to when done.
@@ -548,10 +581,10 @@ class ClCompiler:
 					ctx.append("%s: " % syntax_elem.bottom_label)
 			elif syntax_elem.kind == "for_block":
 				# Make a label for breaking out of the loop.
-				list_comp_var, expr = Matcher.match_with(syntax_elem.ast,
+				unpack_spec_or_variable, expr = Matcher.match_with(syntax_elem.ast,
 					("for_block", [
 						("list_comp_group", [
-							("identifier", str),
+							tuple,
 							tuple,
 						])
 					]))
@@ -567,7 +600,11 @@ class ClCompiler:
 				ctx.append("%s:" % top_label)
 				ctx.append("ITERATE %s" % done_iterating_label)
 				# Then assign the yielded value into the iteration variable.
-				ctx.store(list_comp_var)
+				if unpack_spec_or_variable[0] == "unpack_spec":
+					self.generate_consumer_for_unpack_spec(unpack_spec_or_variable[1], ctx)
+				else:
+					var, = Matcher.match_with(unpack_spec_or_variable, ("identifier", str))
+					ctx.store(var)
 				# Perform the block.
 				self.generate_bytecode_for_seq(syntax_elem.block, ctx)
 				ctx.append("JUMP %s" % top_label)
@@ -674,10 +711,11 @@ def source_to_bytecode(source, source_file_path="<sourceless>"):
 if __name__ == "__main__":
 	source = """
 
-a, b = [1, 2]
+a = [ [ i * j | j <- upto(i)] | i <- upto(5) ]
 
-print a
-print b
+for i <- a
+	print i
+end
 
 END_CL_INPUT
 
