@@ -353,6 +353,7 @@ class ClCompiler:
 		raise ValueError("Unhandled node type: %r" % (node_type,))
 
 	def generate_consumer_for_assignment_target(self, assignment_target, ctx):
+		assert False
 		target_type, target_contents = Matcher.match_with(assignment_target, (str, list))
 		if target_type == "variable":
 			variable_name, = Matcher.match_with(target_contents, [("identifier", str)])
@@ -378,7 +379,7 @@ class ClCompiler:
 		# Begin pulling out values, and assigning.
 		for assignment_target in unpack_spec:
 			ctx.append("ITERATE %s" % too_few_label)
-			self.generate_consumer_for_assignment_target(assignment_target, ctx)
+			self.generate_consumer_for_assign_spec(assignment_target, ctx)
 		# Finally, iterate one last time, to rule out too many.
 		good_label = self.new_label()
 		ctx.append("ITERATE %s" % good_label)
@@ -387,6 +388,27 @@ class ClCompiler:
 		ctx.append("TRACEBACK \"Too few values to unpack.\"")
 		ctx.append("%s:" % good_label)
 		ctx.append("POP")
+
+	def generate_consumer_for_assign_spec(self, assign_spec, ctx):
+		target_type, target_contents = Matcher.match_with(assign_spec, (str, list))
+		if target_type == "unpack_spec":
+			self.generate_consumer_for_unpack_spec(target_contents, ctx)
+		elif target_type == "variable":
+			variable_name, = Matcher.match_with(target_contents, [("identifier", str)])
+			ctx.store(variable_name)
+		elif target_type == "dot_accessor":
+			# Pull out the expression and variable name in the node matching "expr . identifier":
+			expr, index_variable_name = Matcher.match_with(target_contents,
+				[tuple, ("identifier", str)])
+			self.generate_bytecode_for_expr(expr, ctx)
+			ctx.append("DOT_STORE \"%s\"" % index_variable_name)
+		elif target_type == "indexing":
+			expr1, expr2 = Matcher.match_with(target_contents, [tuple, tuple])
+			self.generate_bytecode_for_expr(expr1, ctx)
+			self.generate_bytecode_for_expr(expr2, ctx)
+			ctx.append("STORE_INDEX")
+		else:
+			raise Exception("Unhandled assignment spec type: %r." % (spec_kind,))
 
 	def generate_bytecode_for_expr(self, expr, ctx):
 		node_type, = Matcher.match_with(expr, (str, Matcher.DropAny()))
@@ -409,7 +431,6 @@ class ClCompiler:
 				self.generate_bytecode_for_expr(entry_expr, ctx)
 				ctx.append("LIST_APPEND")
 		elif node_type == "list_comp":
-			__import__("pprint").pprint(expr)
 			term_expr, unpack_spec_or_variable, iter_expr = Matcher.match_with(expr,
 				("list_comp", [
 					tuple,
@@ -530,23 +551,23 @@ class ClCompiler:
 				self.generate_bytecode_for_expr(expr, ctx)
 				ctx.append("PRINT")
 			elif syntax_elem.kind == "assignment":
-				assignment_target, expr = Matcher.match_with(syntax_elem.ast,
+				assign_spec, expr = Matcher.match_with(syntax_elem.ast,
 					("assignment", [
 						tuple,
 						tuple,
 					]))
 				self.generate_bytecode_for_expr(expr, ctx)
 				# We now compute the assignment target parameters.
-				self.generate_consumer_for_assignment_target(assignment_target, ctx)
-			elif syntax_elem.kind == "unpack_assignment":
-				unpack_spec, expr = Matcher.match_with(syntax_elem.ast,
-					("unpack_assignment", [
-						("unpack_spec", list),
-						tuple,
-					]))
-				# First, we evaluate expr, and then we iterate over it.
-				self.generate_bytecode_for_expr(expr, ctx)
-				self.generate_consumer_for_unpack_spec(unpack_spec, ctx)
+				self.generate_consumer_for_assign_spec(assign_spec, ctx)
+#			elif syntax_elem.kind == "unpack_assignment":
+#				unpack_spec, expr = Matcher.match_with(syntax_elem.ast,
+#					("unpack_assignment", [
+#						("unpack_spec", list),
+#						tuple,
+#					]))
+#				# First, we evaluate expr, and then we iterate over it.
+#				self.generate_bytecode_for_expr(expr, ctx)
+#				self.generate_consumer_for_unpack_spec(unpack_spec, ctx)
 			elif syntax_elem.kind in ["while_block", "if_block"]:
 				expr, = Matcher.match_with(syntax_elem.ast, (syntax_elem.kind, [tuple]))
 				# Make a label to jump to for testing, and to jump to when done.
@@ -710,6 +731,13 @@ def source_to_bytecode(source, source_file_path="<sourceless>"):
 
 if __name__ == "__main__":
 	source = """
+
+(a, ((b,)),), = [[1, [2]]]
+
+print a
+print b
+
+END_CL_INPUT
 
 a = [ [ i * j | j <- upto(i)] | i <- upto(5) ]
 

@@ -64,12 +64,30 @@ expr_p0%        ::= ternary
 expr% ::= expr_p0
 raw_expr:expr ::= expr_p0
 
-assignment_target% ::= variable | dot_accessor | indexing
+//assignment_target% ::= variable | dot_accessor | indexing
 
-assignment ::= assignment_target "="~ expr
-unpack_spec_rec% ::= ","~ assignment_target | ","~ assignment_target unpack_spec_rec
-unpack_spec ::= assignment_target unpack_spec_rec | assignment_target ","~
-unpack_assignment ::= unpack_spec "="~ expr
+//assign_spec ::= single_assignment_target | unpack_assign
+
+//assignment ::= assignment_target "="~ expr
+//unpack_spec_rec% ::= ","~ assignment_target | ","~ assignment_target unpack_spec_rec
+//unpack_spec ::= assignment_target unpack_spec_rec | assignment_target ","~
+//unpack_assignment ::= unpack_spec "="~ expr
+
+
+single_spec% ::= variable | dot_accessor | indexing | "("~ assign_spec ")"~
+
+unpack_spec_rec% ::= | single_spec | single_spec ","~ unpack_spec_rec
+unpack_spec ::= single_spec ","~ unpack_spec_rec
+assign_spec% ::= single_spec | unpack_spec
+
+assignment ::= assign_spec "="~ expr
+
+// Cases:
+//a
+//a,
+//a, b
+//a, b, c
+//a, (b, c),
 
 // Define the block forming constructions.
 if_block ::= "if"~ expr
