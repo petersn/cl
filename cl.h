@@ -50,7 +50,7 @@ constexpr ClOpcodeDesc cl_opcode_descs[] = {
 	ClOpcodeDesc({"MAKE_INSTANCE",   0,  1, false}),
 	ClOpcodeDesc({"MAKE_INSTANCE_P", 0,  0, false}),
 	ClOpcodeDesc({"CALL",            0, -1, false}),
-	ClOpcodeDesc({"ITERATE",         1,  0, false}),
+	ClOpcodeDesc({"ITERATE",         1,  1, false}),
 	ClOpcodeDesc({"STOP_ITERATION",  0,  0, false}),
 	ClOpcodeDesc({"LIST_APPEND",     0, -1, false}),
 	ClOpcodeDesc({"DOT_LOAD",        0,  0, true }),
@@ -58,6 +58,7 @@ constexpr ClOpcodeDesc cl_opcode_descs[] = {
 	ClOpcodeDesc({"GET_GLOBAL",      0,  1, false}),
 	ClOpcodeDesc({"SET_GLOBAL",      0, -1, false}),
 	ClOpcodeDesc({"GET_THIS",        0,  1, false}),
+	ClOpcodeDesc({"UNARY_MINUS",     0,  0, false}),
 	ClOpcodeDesc({"BINARY_PLUS",     0, -1, false}),
 	ClOpcodeDesc({"BINARY_MINUS",    0, -1, false}),
 	ClOpcodeDesc({"BINARY_TIMES",    0, -1, false}),
@@ -66,12 +67,13 @@ constexpr ClOpcodeDesc cl_opcode_descs[] = {
 	ClOpcodeDesc({"BINARY_INDEX",    0, -1, false}),
 	ClOpcodeDesc({"BINARY_IN",       0, -1, false}),
 	ClOpcodeDesc({"BINARY_COMPARE",  1, -1, false}),
-	ClOpcodeDesc({"STORE_INDEX",     0, -2, false}),
+	ClOpcodeDesc({"STORE_INDEX",     0, -3, false}),
 	ClOpcodeDesc({"JUMP",            1,  0, false}),
 	ClOpcodeDesc({"JUMP_IF_TRUTHY",  1, -1, false}),
 	ClOpcodeDesc({"JUMP_IF_FALSEY",  1, -1, false}),
 	ClOpcodeDesc({"RETURN",          0,  0, false}),
 	ClOpcodeDesc({"PRINT",           0, -1, false}),
+	ClOpcodeDesc({"TRACEBACK",       0,  0, true }),
 // This is a pseudo-opcode that exists purely in the input opcode stream.
 // It should be removed from the opcode stream before exection.
 	ClOpcodeDesc({"LINE_NUMBER",     1,-99, false}),
@@ -163,6 +165,7 @@ public:
 	void load_from_shared_object(std::string path, ClInstance* load_into_here);
 
 	// Operations.
+	ClObj* unary_minus(ClObj* arg);
 	ClObj* binary_plus(ClObj* left, ClObj* right);
 	ClObj* binary_minus(ClObj* left, ClObj* right);
 	ClObj* binary_times(ClObj* left, ClObj* right);
@@ -177,6 +180,7 @@ bool cl_coerce_to_boolean(ClObj* obj);
 ClObj* cl_perform_function_call(ClContext* ctx, ClObj* supposed_function, ClObj* argument);
 ClObj* cl_lookup_in_object_table(ClObj* object, const std::string& name);
 void cl_store_to_object_table(ClObj* object_to_store_in, ClObj* value_to_store, const std::string& name);
+void cl_store_by_index(ClObj* indexed_obj, ClObj* index_value, ClObj* stored_obj);
 
 ClObj* cl_builtin_nil_to_string(ClFunction* this_function, ClObj* argument);
 ClObj* cl_builtin_int_to_string(ClFunction* this_function, ClObj* argument);

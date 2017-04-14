@@ -147,7 +147,11 @@ class ClParser:
 				exit(1)
 			elif len(derivations) > 1:
 				print "BUG BUG BUG: Ambiguous syntax on:", self.detokenize(syntax_element.tokens)
-				exit(1)
+				for i, derivation in enumerate(derivations):
+					print
+					print "===== Derivation %i:" % (i + 1)
+					__import__("pprint").pprint(derivation)
+				exit(2)
 			# Extract the unique derivation of this syntax element.
 			derivation = derivations[0]
 			# This becomes a derived syntax element.
@@ -274,7 +278,7 @@ class ClCompiler:
 						tuple,
 					]))
 				return set([variable_name]) | ClCompiler.compute_free_variables(expr, locals_only)
-			elif node_type == "extended_assignment":
+			elif node_type == "unpack_assignment_BAD":
 				index_expr, index_name, value_expr = Matcher.match_with(ast.ast,
 				("extended_assignment", [
 					tuple,
@@ -348,6 +352,25 @@ class ClCompiler:
 			return set()
 		raise ValueError("Unhandled node type: %r" % (node_type,))
 
+	def generate_consumer_for_assignment_target(self, assignment_target, ctx):
+		target_type, target_contents = Matcher.match_with(assignment_target, (str, list))
+		if target_type == "variable":
+			variable_name, = Matcher.match_with(target_contents, [("identifier", str)])
+			ctx.store(variable_name)
+		elif target_type == "dot_accessor":
+			# Pull out the expression and variable name in the node matching "expr . identifier":
+			expr, index_variable_name = Matcher.match_with(target_contents,
+				[tuple, ("identifier", str)])
+			self.generate_bytecode_for_expr(expr, ctx)
+			ctx.append("DOT_STORE \"%s\"" % index_variable_name)
+		elif target_type == "indexing":
+			expr1, expr2 = Matcher.match_with(target_contents, [tuple, tuple])
+			self.generate_bytecode_for_expr(expr1, ctx)
+			self.generate_bytecode_for_expr(expr2, ctx)
+			ctx.append("STORE_INDEX")
+		else:
+			raise Exception("Unhandled assignment target type: %r." % (target_type,))
+
 	def generate_bytecode_for_expr(self, expr, ctx):
 		node_type, = Matcher.match_with(expr, (str, Matcher.DropAny()))
 
@@ -381,6 +404,11 @@ class ClCompiler:
 				]))
 			self.generate_bytecode_for_expr(sub_expr, ctx)
 			ctx.append("DOT_LOAD \"%s\"" % dot_access_name)
+		elif node_type == "indexing":
+			expr1, expr2 = Matcher.match_with(expr, ("indexing", [tuple, tuple]))
+			self.generate_bytecode_for_expr(expr1, ctx)
+			self.generate_bytecode_for_expr(expr2, ctx)
+			ctx.append("BINARY_INDEX")
 		elif node_type == "binary":
 			expr1, operation_class, operation, expr2 = Matcher.match_with(expr,
 				("binary", [
@@ -405,10 +433,22 @@ class ClCompiler:
 				"<=": "BINARY_COMPARE 4",
 				">=": "BINARY_COMPARE 5",
 			}
-			if operation in mapping:
-				ctx.append(mapping[operation])
-			else:
+			if operation not in mapping:
 				raise ValueError("Unhandled binary operation type: %r" % (operation,))
+			ctx.append(mapping[operation])
+		elif node_type == "unary":
+			operation_class, operation, expr = Matcher.match_with(expr,
+				("unary", [
+					(str, str),
+					tuple,
+				]))
+			self.generate_bytecode_for_expr(expr, ctx)
+			mapping = {
+				"-": "UNARY_MINUS",
+			}
+			if operation not in mapping:
+				raise ValueError("Unhandled unary operation type: %r" % (operation,))
+			ctx.append(mapping[operation])
 		elif node_type == "this":
 			ctx.append("GET_THIS")
 		else:
@@ -423,7 +463,7 @@ class ClCompiler:
 		ctx.append("# [%s]" % ", ".join(map(str, ctx.variable_table)))
 
 		for syntax_elem in syntax_elem_seq:
-			ctx.append("LINE_NUMBER %i" % syntax_elem.line_number)
+			ctx.append("  LINE_NUMBER %i" % syntax_elem.line_number)
 			if syntax_elem.kind == "expr":
 				expr, = Matcher.match_with(syntax_elem.ast, ("expr", [tuple]))
 				# Generate the value then immediately drop it.
@@ -443,24 +483,37 @@ class ClCompiler:
 				self.generate_bytecode_for_expr(expr, ctx)
 				ctx.append("PRINT")
 			elif syntax_elem.kind == "assignment":
-				variable_name, expr = Matcher.match_with(syntax_elem.ast,
+				assignment_target, expr = Matcher.match_with(syntax_elem.ast,
 					("assignment", [
-						("identifier", str),
+						tuple,
 						tuple,
 					]))
 				self.generate_bytecode_for_expr(expr, ctx)
-				ctx.store(variable_name)
-			elif syntax_elem.kind == "extended_assignment":
-				index_expr, index_name, value_expr = Matcher.match_with(syntax_elem.ast,
-					("extended_assignment", [
-						tuple,
-						("identifier", str),
+				# We now compute the assignment target parameters.
+				self.generate_consumer_for_assignment_target(assignment_target, ctx)
+			elif syntax_elem.kind == "unpack_assignment":
+				unpack_spec, expr = Matcher.match_with(syntax_elem.ast,
+					("unpack_assignment", [
+						("unpack_spec", list),
 						tuple,
 					]))
-				self.generate_bytecode_for_expr(index_expr, ctx)
-				self.generate_bytecode_for_expr(value_expr, ctx)
-				ctx.append("SWAP")
-				ctx.append("DOT_STORE \"%s\"" % index_name)
+				# First, we evaluate expr, and then we iterate over it.
+				self.generate_bytecode_for_expr(expr, ctx)
+				ctx.append("DOT_LOAD \"iter\"")
+				# Make a label for unpack too few.
+				too_few_label = self.new_label()
+				# Begin pulling out values, and assigning.
+				for assignment_target in unpack_spec:
+					ctx.append("ITERATE %s" % too_few_label)
+					self.generate_consumer_for_assignment_target(assignment_target, ctx)
+				# Finally, iterate one last time, to rule out too many.
+				good_label = self.new_label()
+				ctx.append("ITERATE %s" % good_label)
+				ctx.append("TRACEBACK \"Too many values to unpack.\"")
+				ctx.append("%s:" % too_few_label)
+				ctx.append("TRACEBACK \"Too few values to unpack.\"")
+				ctx.append("%s:" % good_label)
+				ctx.append("POP")
 			elif syntax_elem.kind in ["while_block", "if_block"]:
 				expr, = Matcher.match_with(syntax_elem.ast, (syntax_elem.kind, [tuple]))
 				# Make a label to jump to for testing, and to jump to when done.
@@ -621,6 +674,13 @@ def source_to_bytecode(source, source_file_path="<sourceless>"):
 if __name__ == "__main__":
 	source = """
 
+a, b = [1, 2]
+
+print a
+print b
+
+END_CL_INPUT
+
 class Foo
 	value = 0
 
@@ -634,8 +694,6 @@ f = Foo(nil)
 
 print f.add(10)
 print f.add(10)
-
-END_CL_INPUT
 
 for i <- upto(10)
 	print i
@@ -654,7 +712,6 @@ end
 
 print l
 
-END_CL_INPUT
 
 # Huzzah for Cl!
 def build_adder x
@@ -666,7 +723,7 @@ end
 
 five_adder = build_adder([5])
 print five_adder([7])
-#print 5.to_string(nil)
+print 5.to_string(nil)
 
 l = []
 l.append("foo"); l.append(2)

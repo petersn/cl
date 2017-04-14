@@ -113,6 +113,7 @@ ClObj* ClRecord::load(int index) const {
 void ClRecord::store(int index, ClObj* value) {
 	if (index < 0 or index >= length)
 		cl_crash("Record store index out of range.");
+	// Must inc value ref first, in case we're storing over itself.
 	value->inc_ref();
 	contents[index]->dec_ref();
 	contents[index] = value;

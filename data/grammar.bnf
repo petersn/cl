@@ -62,9 +62,12 @@ expr_p0%        ::= ternary
 expr% ::= expr_p0
 raw_expr:expr ::= expr_p0
 
+assignment_target% ::= variable | dot_accessor | indexing
 
-assignment ::= identifier:: "="~ expr
-extended_assignment ::= expr "."~ identifier:: "="~ expr
+assignment ::= assignment_target "="~ expr
+unpack_spec_rec% ::= ","~ assignment_target | ","~ assigment_target unpack_spec_rec
+unpack_spec ::= assignment_target unpack_spec_rec | assignment_target ","~
+unpack_assignment ::= unpack_spec "="~ expr
 
 // Define the block forming constructions.
 if_block ::= "if"~ expr
@@ -99,7 +102,7 @@ literal_cl_assembly ::= literal_cl_assembly::
 // Here are the various forms of a syntax element:
 syntax_element ::= raw_expr
 syntax_element ::= assignment
-syntax_element ::= extended_assignment
+syntax_element ::= unpack_assignment
 syntax_element ::= end
 syntax_element ::= block_forming
 syntax_element ::= basic_single_line

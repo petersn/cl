@@ -493,6 +493,13 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 				stack.push_back(to_push);
 				break;
 			}
+			case OPCODE_INDEX("UNARY_MINUS"): {
+				ClObj* arg = pop(stack);
+				ClObj* result = unary_minus(arg);
+				arg->dec_ref();
+				stack.push_back(result);
+				break;
+			}
 #define BINARY_OPERATION(name, func) \
 			case OPCODE_INDEX(name): { \
 				ClObj* right = pop(stack); \
@@ -519,6 +526,16 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 				stack.push_back(result);
 				break;
 			}
+			case OPCODE_INDEX("STORE_INDEX"): {
+				ClObj* index_value = pop(stack);
+				ClObj* indexed_obj = pop(stack);
+				ClObj* stored_obj = pop(stack);
+				cl_store_by_index(indexed_obj, index_value, stored_obj);
+				index_value->dec_ref();
+				indexed_obj->dec_ref();
+				stored_obj->dec_ref();
+				break;
+			}
 			case OPCODE_INDEX("JUMP"): {
 				instruction_pointer = instruction.args[0];
 				break;
@@ -543,6 +560,10 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 				ClObj* obj = pop(stack);
 				cout << " ---> Printing: " << *obj << endl;
 				obj->dec_ref();
+				break;
+			}
+			case OPCODE_INDEX("TRACEBACK"): {
+				data_ctx->traceback_and_crash(instruction.data_field);
 				break;
 			}
 			default:
