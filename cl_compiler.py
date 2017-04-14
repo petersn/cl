@@ -272,21 +272,13 @@ class ClCompiler:
 				subexpression, = Matcher.match_with(ast.ast, ("expr", [tuple]))
 				return ClCompiler.compute_free_variables(subexpression, locals_only)
 			elif node_type == "assignment":
-				variable_name, expr = Matcher.match_with(ast.ast,
+				assign_spec, expr = Matcher.match_with(ast.ast,
 					("assignment", [
-						("identifier", str),
+						tuple,
 						tuple,
 					]))
-				return set([variable_name]) | ClCompiler.compute_free_variables(expr, locals_only)
-			elif node_type == "unpack_assignment_BAD":
-				index_expr, index_name, value_expr = Matcher.match_with(ast.ast,
-				("extended_assignment", [
-					tuple,
-					("identifier", str),
-					tuple,
-				]))
-				return ClCompiler.compute_free_variables(index_expr, locals_only) | \
-				       ClCompiler.compute_free_variables(value_expr, locals_only)
+				return ClCompiler.compute_free_variables(assign_spec, locals_only) | \
+				       ClCompiler.compute_free_variables(expr, locals_only)
 			elif node_type == "function_definition":
 				ast.finalize()
 				if not locals_only:
@@ -301,7 +293,7 @@ class ClCompiler:
 		# At this point we are guaranteed to be a tuple from the raw AST given by our parser.
 		node_type, = Matcher.match_with(ast, (str, Matcher.DropAny()))
 
-		if node_type in ["literal"]:
+		if node_type in ["literal", "variable", "unpack_spec", "list_comp"]:
 			return ClCompiler.compute_free_variables(ast[1], locals_only)
 		elif node_type == "identifier":
 			# If we're computing local variables then a simple reference isn't enough -- you have to assign.
@@ -342,42 +334,23 @@ class ClCompiler:
 		elif node_type == "list_comp_group":
 			# XXX: Currently this produces a local because it's used only in for loops.
 			# Later, when it's used in actually list comprehensions, it will have to change.
-			list_comp_var, expr = Matcher.match_with(ast,
+			assign_spec, expr = Matcher.match_with(ast,
 				("list_comp_group", [
-					("identifier", str),
+					tuple,
 					tuple,
 				]))
-			return set([list_comp_var]) | ClCompiler.compute_free_variables(expr, locals_only)
+			return ClCompiler.compute_free_variables(assign_spec, locals_only) | \
+			       ClCompiler.compute_free_variables(expr, locals_only)
 		elif node_type in ["integer", "string", "this"]:
 			return set()
 		raise ValueError("Unhandled node type: %r" % (node_type,))
 
-	def generate_consumer_for_assignment_target(self, assignment_target, ctx):
-		assert False
-		target_type, target_contents = Matcher.match_with(assignment_target, (str, list))
-		if target_type == "variable":
-			variable_name, = Matcher.match_with(target_contents, [("identifier", str)])
-			ctx.store(variable_name)
-		elif target_type == "dot_accessor":
-			# Pull out the expression and variable name in the node matching "expr . identifier":
-			expr, index_variable_name = Matcher.match_with(target_contents,
-				[tuple, ("identifier", str)])
-			self.generate_bytecode_for_expr(expr, ctx)
-			ctx.append("DOT_STORE \"%s\"" % index_variable_name)
-		elif target_type == "indexing":
-			expr1, expr2 = Matcher.match_with(target_contents, [tuple, tuple])
-			self.generate_bytecode_for_expr(expr1, ctx)
-			self.generate_bytecode_for_expr(expr2, ctx)
-			ctx.append("STORE_INDEX")
-		else:
-			raise Exception("Unhandled assignment target type: %r." % (target_type,))
-
-	def generate_consumer_for_unpack_spec(self, unpack_spec, ctx):
+	def generate_consumer_for_unpack_spec(self, unpack_spec_contents, ctx):
 		ctx.append("DOT_LOAD \"iter\"")
 		# Make a label for unpack too few.
 		too_few_label = self.new_label()
 		# Begin pulling out values, and assigning.
-		for assignment_target in unpack_spec:
+		for assignment_target in unpack_spec_contents:
 			ctx.append("ITERATE %s" % too_few_label)
 			self.generate_consumer_for_assign_spec(assignment_target, ctx)
 		# Finally, iterate one last time, to rule out too many.
@@ -431,7 +404,7 @@ class ClCompiler:
 				self.generate_bytecode_for_expr(entry_expr, ctx)
 				ctx.append("LIST_APPEND")
 		elif node_type == "list_comp":
-			term_expr, unpack_spec_or_variable, iter_expr = Matcher.match_with(expr,
+			term_expr, assign_spec, iter_expr = Matcher.match_with(expr,
 				("list_comp", [
 					tuple,
 					("list_comp_group", [
@@ -447,11 +420,7 @@ class ClCompiler:
 			ctx.append("%s:" % top_label)
 			ctx.append("ITERATE %s" % done_iterating_label)
 			# Then assign the yielded value into the iteration variable.
-			if unpack_spec_or_variable[0] == "unpack_spec":
-				self.generate_consumer_for_unpack_spec(unpack_spec_or_variable[1], ctx)
-			else:
-				var, = Matcher.match_with(unpack_spec_or_variable, ("identifier", str))
-				ctx.store(var)
+			self.generate_consumer_for_assign_spec(assign_spec, ctx)
 			ctx.append("SWAP")
 			self.generate_bytecode_for_expr(term_expr, ctx)
 			ctx.append("LIST_APPEND")
@@ -602,7 +571,7 @@ class ClCompiler:
 					ctx.append("%s: " % syntax_elem.bottom_label)
 			elif syntax_elem.kind == "for_block":
 				# Make a label for breaking out of the loop.
-				unpack_spec_or_variable, expr = Matcher.match_with(syntax_elem.ast,
+				assign_spec, expr = Matcher.match_with(syntax_elem.ast,
 					("for_block", [
 						("list_comp_group", [
 							tuple,
@@ -621,11 +590,7 @@ class ClCompiler:
 				ctx.append("%s:" % top_label)
 				ctx.append("ITERATE %s" % done_iterating_label)
 				# Then assign the yielded value into the iteration variable.
-				if unpack_spec_or_variable[0] == "unpack_spec":
-					self.generate_consumer_for_unpack_spec(unpack_spec_or_variable[1], ctx)
-				else:
-					var, = Matcher.match_with(unpack_spec_or_variable, ("identifier", str))
-					ctx.store(var)
+				self.generate_consumer_for_assign_spec(assign_spec, ctx)
 				# Perform the block.
 				self.generate_bytecode_for_seq(syntax_elem.block, ctx)
 				ctx.append("JUMP %s" % top_label)
@@ -732,18 +697,27 @@ def source_to_bytecode(source, source_file_path="<sourceless>"):
 if __name__ == "__main__":
 	source = """
 
-(a, ((b,)),), = [[1, [2]]]
+#a = [ [ i * j | j <- upto(i)] | i <- upto(5) ]
 
-print a
-print b
+def func x
+	a = [ i | i <- upto(10) ]
+	b = 2
+	a, b = [b, a]
 
-END_CL_INPUT
-
-a = [ [ i * j | j <- upto(i)] | i <- upto(5) ]
-
-for i <- a
-	print i
+	class Foo
+		value = 0
+		def another x
+			@.v = @
+			return @ + @
+		end
+	end
 end
+
+func(nil)
+
+#for i <- a
+#	print i
+#end
 
 END_CL_INPUT
 

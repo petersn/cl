@@ -1,7 +1,6 @@
 // Context free grammar for Cl.
 // See parse.py for more details.
 
-variable ::= identifier::
 lambda ::= "\"~ identifier:: "->"~ expr_p7
 
 // Used to be expr_p6 expr_p9
@@ -22,9 +21,7 @@ comma_separated_values% ::= expr | expr ","~ comma_separated_values
 list_literal ::= "["~ comma_separated_values "]"~ | "["~ "]"~
 ternary ::= "if"~ expr "then"~ expr "else"~ expr
 
-unpack_spec_or_variable% ::= unpack_spec | identifier::
-
-list_comp_group ::= unpack_spec_or_variable "<"~ "-"~ expr
+list_comp_group ::= assign_spec "<"~ "-"~ expr
 list_comp_groups% ::= list_comp_group | list_comp_group ","~ list_comp_groups
 list_comp ::= "["~ expr pipe::~ list_comp_groups "]"~
 
@@ -64,30 +61,13 @@ expr_p0%        ::= ternary
 expr% ::= expr_p0
 raw_expr:expr ::= expr_p0
 
-//assignment_target% ::= variable | dot_accessor | indexing
-
-//assign_spec ::= single_assignment_target | unpack_assign
-
-//assignment ::= assignment_target "="~ expr
-//unpack_spec_rec% ::= ","~ assignment_target | ","~ assignment_target unpack_spec_rec
-//unpack_spec ::= assignment_target unpack_spec_rec | assignment_target ","~
-//unpack_assignment ::= unpack_spec "="~ expr
-
-
+variable ::= identifier::
 single_spec% ::= variable | dot_accessor | indexing | "("~ assign_spec ")"~
-
 unpack_spec_rec% ::= | single_spec | single_spec ","~ unpack_spec_rec
 unpack_spec ::= single_spec ","~ unpack_spec_rec
 assign_spec% ::= single_spec | unpack_spec
 
 assignment ::= assign_spec "="~ expr
-
-// Cases:
-//a
-//a,
-//a, b
-//a, b, c
-//a, (b, c),
 
 // Define the block forming constructions.
 if_block ::= "if"~ expr
