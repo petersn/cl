@@ -50,7 +50,10 @@ constexpr ClOpcodeDesc cl_opcode_descs[] = {
 	ClOpcodeDesc({"MAKE_INSTANCE",   0,  1, false}),
 	ClOpcodeDesc({"MAKE_INSTANCE_P", 0,  0, false}),
 	ClOpcodeDesc({"CALL",            0, -1, false}),
-	ClOpcodeDesc({"ITERATE",         1,  1, false}),
+	// ITERATE has a stack delta of 0 if iteration is over, and +1 otherwise. :/
+	// I haven't yet figured out what I want to do about this.
+	// For now I set it to -99, to indicate that no value is correct.
+	ClOpcodeDesc({"ITERATE",         1,-99, false}),
 	ClOpcodeDesc({"STOP_ITERATION",  0,  0, false}),
 	ClOpcodeDesc({"LIST_APPEND",     0, -1, false}),
 	ClOpcodeDesc({"DOT_LOAD",        0,  0, true }),

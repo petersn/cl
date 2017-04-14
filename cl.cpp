@@ -285,6 +285,8 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 		for (auto& p : stack)
 			cout << ", " << *p;
 		cout << endl;
+
+		size_t starting_stack_size = stack.size();
 #endif
 
 		switch (instruction.opcode) {
@@ -569,6 +571,18 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 			default:
 				cl_crash("BUG BUG BUG: Unhandled opcode in execute.");
 		}
+
+#ifdef DEBUG_OUTPUT
+		int declared_stack_delta = cl_opcode_descs[instruction.opcode].stack_delta;
+		// Here we skip the check if declared_stack_delta is -99.
+		// This is to accomodate ITERATE, which currently violates the fixed stack delta doctrine.
+		// While I figure out what I want to do about that, this is how it'll be.
+		if (stack.size() != starting_stack_size + declared_stack_delta and declared_stack_delta != -99) {
+			cout << cl_opcode_descs[instruction.opcode].name << endl;
+			cout << "Bad stack size: " << stack.size() << " Old: " << starting_stack_size << " Delta: " << declared_stack_delta << endl;
+			cl_crash("DEBUG ERROR");
+		}
+#endif
 	}
 
 	// Here we compute the return value.
