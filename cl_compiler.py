@@ -488,6 +488,13 @@ class ClCompiler:
 			ctx.append(mapping[operation])
 		elif node_type == "this":
 			ctx.append("GET_THIS")
+		elif node_type == "lambda":
+			variable_name, expr = Matcher.match_with(expr,
+				("lambda", [
+					("identifier", str),
+					tuple,
+				]))
+			raise NotImplementedError
 		else:
 			raise ValueError("Unhandled expr node_type type: %r" % (node_type,))
 
@@ -700,6 +707,8 @@ if __name__ == "__main__":
 #a = [ [ i * j | j <- upto(i)] | i <- upto(5) ]
 
 def func x
+#	f = \k -> k+1
+
 	a = [ i | i <- upto(10) ]
 	b = 2
 	a, b = [b, a]
