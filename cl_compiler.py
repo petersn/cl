@@ -277,6 +277,16 @@ class ClCompiler:
 						tuple,
 						tuple,
 					]))
+				# XXX TODO XXX:
+				# I have to do more work here on getting local variables correctly.
+				def get_assignees(assign_spec):
+					if x[0] == "variable":
+						return
+					elif x[0] == "unpack_spec":
+						s = set()
+						for subassign in assign_spec[1]:
+							s |= get_assignees(subassign)
+						return
 				return ClCompiler.compute_free_variables(assign_spec, locals_only) | \
 				       ClCompiler.compute_free_variables(expr, locals_only)
 			elif node_type == "function_definition":
@@ -620,15 +630,25 @@ class ClCompiler:
 				# The full inner variable table is just all the free variables used inside.
 				assert len(syntax_elem.args_seq) == 1, "For now only functions of one variable are supported."
 				argument_name, = Matcher.match_with(syntax_elem.args_seq[0], ("identifier", str))
-				inner_variable_table = list(syntax_elem.body_free - set([argument_name]))
+				inner_variable_table = list(syntax_elem.body_locals - set([argument_name]))
 				# Map the function argument to be the first entry in the variable table.
 				inner_variable_table = [argument_name] + inner_variable_table
+
+				# Compute the list of variables we're closing over.
+				print "\n\nDETERMINING THE CLOSURE VARIABLES."
+				print "I have this variable table:", ctx.variable_table
+				print "I have these body_locals:", syntax_elem.body_locals
+				print "I have these body_free:", syntax_elem.body_free
+				print "Args variables:", syntax_elem.args_variables
 
 				# We close precisely when the variable in question is referenced, but not
 				# assigned in the function, and we have the variable in our variable table.
 
 				closure_vars = syntax_elem.body_free - syntax_elem.body_locals - syntax_elem.args_variables
+				print "Closure candidates:", closure_vars
 				closure_vars &= set(ctx.variable_table)
+				print "Final closure:", closure_vars
+				print
 
 				transfer_records = [
 					(ctx.variable_table.index(var), inner_variable_table.index(var))
@@ -704,6 +724,15 @@ def source_to_bytecode(source, source_file_path="<sourceless>"):
 if __name__ == "__main__":
 	source = """
 
+def func x
+	a, b = 2
+end
+
+func(nil)
+print a
+
+END_CL_INPUT
+
 #a = [ [ i * j | j <- upto(i)] | i <- upto(5) ]
 
 def func x
@@ -723,10 +752,10 @@ def func x
 end
 
 func(nil)
-
-#for i <- a
-#	print i
-#end
+print a
+for i <- a
+	print i
+end
 
 END_CL_INPUT
 
