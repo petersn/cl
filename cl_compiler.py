@@ -287,7 +287,9 @@ class ClCompiler:
 						for subassign in assign_spec[1]:
 							s |= get_assignees(subassign)
 						return
-				return ClCompiler.compute_free_variables(assign_spec, locals_only) | \
+					else:
+						assert ValueError("Unhandled assign_spec.")
+				return get_assignees(assign_spec) | \
 				       ClCompiler.compute_free_variables(expr, locals_only)
 			elif node_type == "function_definition":
 				ast.finalize()
