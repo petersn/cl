@@ -200,6 +200,9 @@ ClObj* cl_builtin_upto_base_iter(ClFunction* this_function, ClObj* argument);
 extern "C" {
 
 void cl_execute_string(const char* input, int length);
+void* cl_make_context(void);
+void cl_execute_string_in_context(void* context, const char* input, int length);
+void cl_free_context(void* context);
 
 // This API is used for modules.
 

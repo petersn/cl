@@ -776,3 +776,32 @@ extern "C" void cl_execute_string(const char* input, int length) {
 	delete program;
 }
 
+extern "C" void* cl_make_context(void) {
+	return new ClContext();
+}
+
+extern "C" void cl_execute_string_in_context(void* context, const char* input, int length) {
+	string s(input, length);
+	auto program = ClInstructionSequence::decode_opcodes(s);
+
+	auto ctx = new ClContext();
+	auto root_scope = new ClRecord(0, 0, ctx->data_ctx->nil);
+
+//	ctx->load_from_shared_object("./stdlib.so", ctx->data_ctx->global_scope);
+
+	// Execute the program!
+	ClObj* return_value = ctx->execute(nullptr, nullptr, nullptr, root_scope, program);
+	// Decrement the ref count so this last return value gets reaped.
+	return_value->dec_ref();
+
+	delete root_scope;
+	// XXX: Use after free from this.
+	delete program;
+}
+
+extern "C" void cl_free_context(void* context) {
+	ClContext* ctx = (ClContext*)context;
+	ctx->data_ctx->unref_all_permanent_objects();
+	delete ctx;
+}
+
