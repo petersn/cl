@@ -277,19 +277,27 @@ class ClCompiler:
 						tuple,
 						tuple,
 					]))
-				# XXX TODO XXX:
-				# I have to do more work here on getting local variables correctly.
-				def get_assignees(assign_spec):
-					if x[0] == "variable":
-						return
-					elif x[0] == "unpack_spec":
-						s = set()
+				def get_variables_from_assign_spec(assign_spec):
+					"""get_variables_from_assign_spec(assign_spec) -> set of variables
+					The same deal as compute_free_variables, but it knows about unpack_specs.
+					This is a separate function because variables are different in the context
+					of an assignment, and rather than propagating this state as an argument
+					to compute_free_variables, we simply define a different function here.
+					"""
+					kind = assign_spec[0]
+					if kind == "variable":
+						variable_name, = Matcher.match_with(assign_spec, ("variable", [("identifier", str)]))
+						return set([variable_name])
+					elif kind in ["dot_accessor", "indexing"]:
+						return ClCompiler.compute_free_variables(assign_spec, locals_only)
+					elif kind == "unpack_spec":
+						assignees = set()
 						for subassign in assign_spec[1]:
-							s |= get_assignees(subassign)
-						return
+							assignees |= get_variables_from_assign_spec(subassign)
+						return assignees
 					else:
-						assert ValueError("Unhandled assign_spec.")
-				return get_assignees(assign_spec) | \
+						raise ValueError("Unhandled assign_spec kind: %r" % (kind,))
+				return get_variables_from_assign_spec(assign_spec) | \
 				       ClCompiler.compute_free_variables(expr, locals_only)
 			elif node_type == "function_definition":
 				ast.finalize()
@@ -343,6 +351,14 @@ class ClCompiler:
 					("identifier", str),
 				]))
 			return ClCompiler.compute_free_variables(expr, locals_only)
+		elif node_type == "indexing":
+			expr1, expr2 = Matcher.match_with(ast,
+				("indexing", [
+					tuple,
+					tuple,
+				]))
+			return ClCompiler.compute_free_variables(expr1, locals_only) | \
+			       ClCompiler.compute_free_variables(expr2, locals_only)
 		elif node_type == "list_comp_group":
 			# XXX: Currently this produces a local because it's used only in for loops.
 			# Later, when it's used in actually list comprehensions, it will have to change.
@@ -727,11 +743,15 @@ if __name__ == "__main__":
 	source = """
 
 def func x
-	a, b = 2
+	class Foo
+	end
+	b = Foo(nil)
+	b.x = [1,2,3,4,5]
+	a, (b.x)[3], c = ["a", "b", "c"]
+	print b.x
 end
 
 func(nil)
-print a
 
 END_CL_INPUT
 
