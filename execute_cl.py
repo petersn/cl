@@ -57,9 +57,16 @@ if __name__ == "__main__":
 		bytecode = cl_compiler.source_to_bytecode(source_code, sys.argv[1])
 		cl_execute_string(bytecode)
 	else:
+		print "Cl REPL v(no version number yet)"
 		ctx = ClContext()
 		while True:
-			inp = raw_input("> ")
+			inp = raw_input(">>> ")
+			if inp == ".":
+				# We begin a multiline."
+				lines = []
+				while lines[-1:] != ["."]:
+					lines.append(raw_input("... "))
+				inp = "\n".join(lines)
 			bytecode = cl_compiler.source_to_bytecode(inp, "<repl>")
 			ctx.execute(bytecode)
 

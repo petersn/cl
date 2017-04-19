@@ -284,6 +284,7 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 		cout << "[" << instruction_pointer-1 << "] Executing: " << cl_opcode_descs[instruction.opcode].name;
 		for (auto& p : stack)
 			cout << ", " << *p;
+		cout << "     " << data_ctx->global_scope;
 		cout << endl;
 
 		size_t starting_stack_size = stack.size();
@@ -781,10 +782,10 @@ extern "C" void* cl_make_context(void) {
 }
 
 extern "C" void cl_execute_string_in_context(void* context, const char* input, int length) {
+	ClContext* ctx = static_cast<ClContext*>(context);
 	string s(input, length);
 	auto program = ClInstructionSequence::decode_opcodes(s);
 
-	auto ctx = new ClContext();
 	auto root_scope = new ClRecord(0, 0, ctx->data_ctx->nil);
 
 //	ctx->load_from_shared_object("./stdlib.so", ctx->data_ctx->global_scope);
@@ -800,7 +801,7 @@ extern "C" void cl_execute_string_in_context(void* context, const char* input, i
 }
 
 extern "C" void cl_free_context(void* context) {
-	ClContext* ctx = (ClContext*)context;
+	ClContext* ctx = static_cast<ClContext*>(context);
 	ctx->data_ctx->unref_all_permanent_objects();
 	delete ctx;
 }

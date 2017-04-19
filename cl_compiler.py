@@ -734,7 +734,7 @@ def source_to_bytecode(source, source_file_path="<sourceless>"):
 	compiler = ClCompiler()
 	ast = parser.parse(source)
 	bytecode_text = compiler.generate_overall_bytecode(ast)
-	print "Bytecode text:", bytecode_text
+#	print "Bytecode text:", bytecode_text
 	assembly_unit = assemble.make_assembly_unit(bytecode_text)
 	bytecode = assemble.assemble(assembly_unit, source_file_path)
 	return bytecode
