@@ -530,10 +530,11 @@ class ClCompiler:
 		# Confirm that our input is a list of syntax elements.
 		assert isinstance(syntax_elem_seq, list)
 		assert all(isinstance(entry, SyntaxElement) for entry in syntax_elem_seq)
-		ctx.append("# [%s]" % ", ".join(map(str, ctx.variable_table)))
+#		ctx.append("# [%s]" % ", ".join(map(str, ctx.variable_table)))
 
 		for syntax_elem in syntax_elem_seq:
-			ctx.append("  LINE_NUMBER %i" % syntax_elem.line_number)
+#			ctx.append("  LINE_NUMBER %i" % syntax_elem.line_number)
+			ctx.append("  # %s" % syntax_elem.kind)
 			if syntax_elem.kind == "expr":
 				expr, = Matcher.match_with(syntax_elem.ast, ("expr", [tuple]))
 				# Generate the value then immediately drop it.
@@ -593,15 +594,16 @@ class ClCompiler:
 			elif syntax_elem.kind in ["else_block", "elif_block"]:
 				syntax_elem.bottom_label = self.new_label()
 				ctx.append("JUMP %s" % syntax_elem.bottom_label)
+				# Produce the long-prophesied bottom label for our parent block.
+				
+				ctx.append("%s: # TOP" % syntax_elem.else_parent_block.bottom_label)
 				if syntax_elem.kind == "elif_block":
 					expr, = Matcher.match_with(syntax_elem.ast, ("elif_block", [tuple]))
 					self.generate_bytecode_for_expr(expr, ctx)
 					ctx.append("JUMP_IF_FALSEY %s" % syntax_elem.bottom_label)
-				# Produce the long-prophesied bottom label for our parent block.
-				ctx.append("%s: " % syntax_elem.else_parent_block.bottom_label)
 				self.generate_bytecode_for_seq(syntax_elem.block, ctx)
 				if syntax_elem.else_trailer_block == None:
-					ctx.append("%s: " % syntax_elem.bottom_label)
+					ctx.append("%s: # BOTTOM" % syntax_elem.bottom_label)
 			elif syntax_elem.kind == "for_block":
 				# Make a label for breaking out of the loop.
 				assign_spec, expr = Matcher.match_with(syntax_elem.ast,
@@ -631,6 +633,9 @@ class ClCompiler:
 				# Drop the iterator object that just returned a ClStopIteration.
 				ctx.append("POP")
 			elif syntax_elem.kind in ["break", "continue"]:
+				# TODO: This yields buggy bytecode!
+				# It can jump over iteration cleanup, and leave crap on the stack.
+				print "WARNING: Break and continue are currently implemented wrong."
 				number_list, = Matcher.match_with(syntax_elem.ast, (syntax_elem.kind, list))
 				goto_index = 1
 				if len(number_list) != 0:
@@ -732,13 +737,38 @@ def source_to_bytecode(source, source_file_path="<sourceless>"):
 	compiler = ClCompiler()
 	ast = parser.parse(source)
 	bytecode_text = compiler.generate_overall_bytecode(ast)
-#	print "Bytecode text:", bytecode_text
+	print "Bytecode text:"
+	print bytecode_text
 	assembly_unit = assemble.make_assembly_unit(bytecode_text)
 	bytecode = assemble.assemble(assembly_unit, source_file_path)
 	return bytecode
 
 if __name__ == "__main__":
 	source = """
+
+if a
+	>>>     # ========== A ==========
+elif b
+	>>>     # ========== B ==========
+elif c
+	>>>     # ========== C ==========
+end
+
+END_CL_INPUT
+
+elif x == 1
+	print 2
+elif x == 1
+	print 3
+elif x == 1
+	print 4
+elif x == 1
+	print 5
+else
+	print "ERROR"
+end
+
+END_CL_INPUT
 
 def func x
 	class Foo
