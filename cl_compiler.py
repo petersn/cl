@@ -224,15 +224,13 @@ class ClCompiler:
 			if var in self.variable_table:
 				self.append("LOAD %i    # %s" % (self.variable_table.index(var), var))
 			else:
-				self.append("GET_GLOBAL")
-				self.append("DOT_LOAD \"%s\"" % (var,))
+				self.append("GLOBAL_LOAD \"%s\"" % (var,))
 
 		def store(self, var):
 			if var in self.variable_table:
 				self.append("STORE %i   # %s" % (self.variable_table.index(var), var))
 			else:
-				self.append("GET_GLOBAL")
-				self.append("DOT_STORE \"%s\"" % (var,))
+				self.append("GLOBAL_STORE \"%s\"" % (var,))
 
 		def append(self, x):
 			for part in x.split("\n"):

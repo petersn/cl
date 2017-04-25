@@ -58,6 +58,10 @@ constexpr ClOpcodeDesc cl_opcode_descs[] = {
 	ClOpcodeDesc({"LIST_APPEND",     0, -1, false}),
 	ClOpcodeDesc({"DOT_LOAD",        0,  0, true }),
 	ClOpcodeDesc({"DOT_STORE",       0, -2, true }),
+	// Here GLOBAL_LOAD and GLOBAL_STORE are for efficiency.
+	// They're equivalent to GET_GLOBAL followed by a LOAD/STORE.
+	ClOpcodeDesc({"GLOBAL_LOAD",     0,  1, true }),
+	ClOpcodeDesc({"GLOBAL_STORE",    0, -1, true }),
 	ClOpcodeDesc({"GET_GLOBAL",      0,  1, false}),
 	ClOpcodeDesc({"SET_GLOBAL",      0, -1, false}),
 	ClOpcodeDesc({"GET_THIS",        0,  1, false}),

@@ -452,8 +452,14 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 				// There is no need to adjust reference counts, because new_item was moved off the stack and into a list.
 				break;
 			}
+			case OPCODE_INDEX("GLOBAL_LOAD"): // Fallthrough!
 			case OPCODE_INDEX("DOT_LOAD"): {
-				ClObj* obj_to_load_from = pop(stack);
+				ClObj* obj_to_load_from;
+				// Specialize this instruction for GLOBAL_LOAD.
+				if (instruction.opcode == OPCODE_INDEX("GLOBAL_LOAD"))
+					obj_to_load_from = data_ctx->global_scope;
+				else
+					obj_to_load_from = pop(stack);
 				ClObj* result = cl_lookup_in_object_table(obj_to_load_from, instruction.data_field);
 				// If the resultant object is a method, then bind it.
 				// XXX: TODO: Check ref counting.
@@ -466,16 +472,26 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 					result = new_result;
 				}
 				// We don't need to increment result's ref count, because cl_lookup_in_object_table does it for us.
-				obj_to_load_from->dec_ref();
+				// Here we dec ref only if we popped the object loaded from off the stack.
+				if (instruction.opcode != OPCODE_INDEX("GLOBAL_LOAD"))
+					obj_to_load_from->dec_ref();
 				stack.push_back(result);
 				break;
 			}
+			case OPCODE_INDEX("GLOBAL_STORE"): // Fallthrough!
 			case OPCODE_INDEX("DOT_STORE"): {
-				ClObj* obj_to_store_in = pop(stack);
+				ClObj* obj_to_store_in;
+				// Specialize this instruction for GLOBAL_STORE.
+				if (instruction.opcode == OPCODE_INDEX("GLOBAL_STORE"))
+					obj_to_store_in = data_ctx->global_scope;
+				else
+					obj_to_store_in = pop(stack);
 				ClObj* value_to_store = pop(stack);
 				cl_store_to_object_table(obj_to_store_in, value_to_store, instruction.data_field);
 				value_to_store->dec_ref();
-				obj_to_store_in->dec_ref();
+				// Here we dec ref only if we popped the stored-into object off the stack.
+				if (instruction.opcode != OPCODE_INDEX("GLOBAL_STORE"))
+					obj_to_store_in->dec_ref();
 				break;
 			}
 			case OPCODE_INDEX("GET_GLOBAL"): {
