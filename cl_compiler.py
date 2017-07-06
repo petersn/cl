@@ -83,17 +83,21 @@ class SyntaxElement:
 		if isinstance(ast[1], list):
 			print " "*indentation + ast[0]
 			for obj in ast[1]:
-				SyntaxElement.pprint_ast(obj, indentation+2)
+				SyntaxElement.pprint_ast(obj, indentation + 2)
 		else:
 			print " "*indentation + ast[0], ast[1]
 
 	def pprint(self, indentation=0):
-		print " "*indentation + "SYNTAX ELEM:",
-		SyntaxElement.pprint_ast(self.ast, indentation=indentation)
+		print " "*indentation + "SYNTAX ELEM:", self.kind
+#		SyntaxElement.pprint_ast(self.ast, indentation=indentation)
 		if self.block != None:
 			print " "*indentation + "{"
 			for obj in self.block:
-				obj.pprint(indentation+4)
+				obj.pprint(indentation + 4)
+			print " "*indentation + "}"
+		elif self.else_trailer_block != None:
+			print " "*indentation + "TRAILER: {"
+			self.else_trailer_block.pprint(indentation + 4)
 			print " "*indentation + "}"
 
 class ClParser:
@@ -121,6 +125,10 @@ class ClParser:
 				self.tokens = []
 				self.max_line_number = -1
 
+			def add_token(self, pair, line_number):
+				self.tokens.append(pair)
+				self.max_line_number = max(self.max_line_number, line_number)
+
 		syntax_elements = [Accumulator()]
 		for t in tokens:
 			if t[0] == "newline":
@@ -132,8 +140,7 @@ class ClParser:
 				# Here we strip the line_number entry from the individual
 				# token, and update the accumulator's max_line)_number.
 				pair = (t.cls, t.string)
-				syntax_elements[-1].tokens.append(pair)
-				syntax_elements[-1].max_line_number = max(syntax_elements[-1].max_line_number, t.line_number)
+				syntax_elements[-1].add_token(pair, t.line_number)
 		# Strip the potential trailing empty syntax element.
 		if syntax_elements[-1].tokens == []:
 			syntax_elements.pop(-1)
@@ -172,7 +179,7 @@ class ClParser:
 			se = SyntaxElement(ast=(main_element_kind, main_element_contents), line_number=max_line_number)
 			all_syntax_elements.append(se)
 			# ... and insert it at the appropriate place in the tree.
-			if se.kind != "end":
+			if se.kind not in ["end", "else_block", "elif_block"]:
 				stack[-1].block.append(se)
 
 			# However, if the syntax element is a block ender, then we simplify the tree.
@@ -185,6 +192,8 @@ class ClParser:
 						# Link the else-style block to its parent.
 						closing_syntax_element.else_trailer_block = se
 						se.else_parent_block = closing_syntax_element
+						# Do the append afterwards!
+						stack[-1].block.append(se)
 				else:
 					print "Misplaced %s, with no block to end." % se.kind
 					exit(1)
@@ -576,34 +585,43 @@ class ClCompiler:
 				# Make a label to jump to for testing, and to jump to when done.
 				top_label = self.new_label()
 				syntax_elem.bottom_label = self.new_label()
+				syntax_elem.completely_done_label = self.new_label()
 				ctx.append("%s:" % top_label)
 				self.generate_bytecode_for_expr(expr, ctx)
 				ctx.append("JUMP_IF_FALSEY %s" % syntax_elem.bottom_label)
 				# Make new entries for continue and break.
 				if syntax_elem.kind == "while_block":
 					ctx.continue_labels.append(top_label)
-					ctx.break_labels.append(syntax_elem.bottom_label)
+					ctx.break_labels.append(syntax_elem.completely_done_label)
 				self.generate_bytecode_for_seq(syntax_elem.block, ctx)
 				if syntax_elem.kind == "while_block":
 					ctx.continue_labels.pop()
 					ctx.break_labels.pop()
 					ctx.append("JUMP %s" % top_label)
-				# If we have an else-trailer block, then we let them define where we jump.
-				if syntax_elem.else_trailer_block == None:
-					ctx.append("%s:" % syntax_elem.bottom_label)
+				# If we have an else-trailer block, then we must issue a jump over all remaining elifs/elses.
+				# Further, we have to let the trailer generate our bottom label, so we don't jump over their test.
+				if syntax_elem.else_trailer_block != None:
+					ctx.append("JUMP %s" % syntax_elem.completely_done_label)
+				else:
+					ctx.append("%s:" % syntax_elem.completely_done_label)
+					print "No child!"
+				# If we have no such trailer, then simply output our bottom label.
+				ctx.append("%s:" % syntax_elem.bottom_label)
 			elif syntax_elem.kind in ["else_block", "elif_block"]:
 				syntax_elem.bottom_label = self.new_label()
-				ctx.append("JUMP %s" % syntax_elem.bottom_label)
-				# Produce the long-prophesied bottom label for our parent block.
-				
-				ctx.append("%s: # TOP" % syntax_elem.else_parent_block.bottom_label)
 				if syntax_elem.kind == "elif_block":
 					expr, = Matcher.match_with(syntax_elem.ast, ("elif_block", [tuple]))
 					self.generate_bytecode_for_expr(expr, ctx)
 					ctx.append("JUMP_IF_FALSEY %s" % syntax_elem.bottom_label)
 				self.generate_bytecode_for_seq(syntax_elem.block, ctx)
-				if syntax_elem.else_trailer_block == None:
-					ctx.append("%s: # BOTTOM" % syntax_elem.bottom_label)
+				# Here the logic is similar.
+				if syntax_elem.else_trailer_block != None:
+					# This following lookup will fail if we end up with an else_trailer block on someone who didn't expect it!
+					syntax_elem.completely_done_label = syntax_elem.else_parent_block.completely_done_label
+					ctx.append("JUMP %s" % syntax_elem.completely_done_label)
+				else:
+					ctx.append("%s: # COMPLETELY DONE" % syntax_elem.else_parent_block.completely_done_label)
+				ctx.append("%s: # BOTTOM" % syntax_elem.bottom_label)
 			elif syntax_elem.kind == "for_block":
 				# Make a label for breaking out of the loop.
 				assign_spec, expr = Matcher.match_with(syntax_elem.ast,
@@ -736,6 +754,7 @@ def source_to_bytecode(source, source_file_path="<sourceless>"):
 	parser = ClParser()
 	compiler = ClCompiler()
 	ast = parser.parse(source)
+	ast[0].pprint()
 	bytecode_text = compiler.generate_overall_bytecode(ast)
 	print "Bytecode text:"
 	print bytecode_text
@@ -746,12 +765,18 @@ def source_to_bytecode(source, source_file_path="<sourceless>"):
 if __name__ == "__main__":
 	source = """
 
-if a
-	>>>     # ========== A ==========
-elif b
-	>>>     # ========== B ==========
-elif c
-	>>>     # ========== C ==========
+def func a b c
+	return a + b + c
+end
+
+END_CL_INPUT
+
+a = 0
+while a < 10
+	a = a + 1
+	print a
+elif False
+	print "Else"
 end
 
 END_CL_INPUT
