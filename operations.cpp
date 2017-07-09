@@ -182,67 +182,124 @@ bool cl_coerce_to_boolean(ClObj* obj) {
 	}
 }
 
-ClObj* cl_perform_function_call(ClContext* ctx, ClObj* supposed_function, ClObj* argument) {
+ClObj* cl_perform_function_call(ClContext* ctx, ClObj* supposed_function, int argument_count, ClObj** arguments) {
 	// If it's an instance, then calling is subclassing/instantiation.
 	if (supposed_function->kind == CL_INSTANCE) {
 		ClInstance* instance_obj = assert_kind<ClInstance>(supposed_function);
 		ClInstance* result = supposed_function->parent->create<ClInstance>();
 		result->scope_parent = instance_obj;
 		instance_obj->inc_ref();
+		// We now check if the instance has a construct method.
+		if (instance_obj->table.find("construct") != instance_obj->table.end()) {
+			ClObj* constructor = cl_lookup_in_object_table(instance_obj, "construct", true);
+			ClFunction* f = assert_kind<ClFunction>(constructor);
+			cout << f->argument_count << endl;
+			cout << f->is_method << endl;
+			cout << f->closed_this << endl;
+			ClObj* ignored = cl_perform_function_call(ctx, constructor, argument_count, arguments);
+			ignored->dec_ref();
+			constructor->dec_ref();
+		} else {
+			// If we have no construct method then enforce that we have been called with no arguments.
+			if (argument_count != 0)
+				ctx->data_ctx->traceback_and_crash("Cannot pass arguments to instance with no construct method.");
+		}
+		// Otherwise, we call the call method.
 		return result;
 	}
 	ClFunction* function_obj = assert_kind<ClFunction>(supposed_function);
+	// Make sure we have the right argument count.
+	// TODO: Implement auto-currying here.
+	if (argument_count != function_obj->argument_count)
+		ctx->data_ctx->traceback_and_crash("Bad argument count on function call.");
 	ClObj* return_value;
 	// We now do an important case check, to determine if function_obj is a native function, or Cl function.
 	// If it's a Cl function, then function_obj->native_executable_content is nullptr.
 	// If it's native, then function_obj->native_executable_content is a ClObj* (*)(ClObj* argument) pointing to the code.
 	if (function_obj->native_executable_content != nullptr) {
 		// === Native function call ===
-		return_value = function_obj->native_executable_content(function_obj, argument);
+		return_value = function_obj->native_executable_content(function_obj, argument_count, arguments);
 	} else {
 		// === Cl (non-native) function call ===
 		// We duplicate the function closure to get a scope to execute in.
 		// Note that we neither register nor set the ref count on this record, because we're about to throw it away.
 		ClRecord* child_scope = function_obj->closure->duplicate();
-		// We set the magic value 0 in the child_scope to be the passed in argument.
-		child_scope->store(0, argument);
+		// BAD COMMENT: // We set the magic value 0 in the child_scope to be the passed in argument.
+		// We set the arguments in the child scope.
+		for (int i = 0; i < argument_count; i++)
+			child_scope->store(i, arguments[i]);
 		// Do execution!
 		return_value = ctx->execute(function_obj->function_name, function_obj->source_file_path, function_obj->closed_this, child_scope, function_obj->executable_content);
-		// By deleting the child scope we effectively decrement the ref count on argument, completing our obligation.
+		// By deleting the child scope we effectively decrement the ref count on the arguments, completing our obligation.
 		delete child_scope;
 	}
 	return return_value;
 }
 
-ClObj* cl_lookup_in_object_table(ClObj* object, const string& name) {
+ClObj* cl_lookup_in_object_table(ClObj* object, const string& name, bool bind_methods) {
 	const unordered_map<string, ClObj*>* object_table;
+	// We need to find the appropriate object table.
+	// Either we are a ClInstance, in which case we have a table, or we're any other type, in which case we use the statically allocated table for that object.
 	if (object->kind == CL_INSTANCE)
 		object_table = &static_cast<ClInstance*>(object)->table;
 	else
 		object_table = &object->parent->default_type_tables[object->kind];
-	auto result = object_table->find(name);
+	auto lookup_result = object_table->find(name);
+
+	// We will now evaluate some complicated logic to determine the result of this lookup, and populate lookup_result_obj.
+	ClObj* lookup_result_obj;
+	// There are now three cases based on the lookup_result.
+	// Either:
+	//   1) The name wasn't found, but we're an instance with a non-null parent.
+	//      In this case, we recursively lookup on our parent to set lookup_result_obj.
+	//   2) The name wasn't found, but the above doesn't apply.
+	//      In this case, we have an attribute not found error.
+	//   3) Everything else. (Specifically, the name WAS found.)
+	//      In this case, set lookup_result_obj based on the found object.
+	// Once we have evaluated this logic, we proceed to method binding.
+
+	// Delegate to the parent if we're looking up in an instance, and the field isn't found, and the parent is non-null.
 	if (object->kind == CL_INSTANCE and
-	    result == object_table->end() and
-	    static_cast<ClInstance*>(object)->scope_parent != nullptr)
-		return cl_lookup_in_object_table(static_cast<ClInstance*>(object)->scope_parent, name);
-	if (result == object_table->end()) {
-		string message = "No attribute \"";
-		message += name;
-		message += "\" found.";
+	    lookup_result == object_table->end() and
+	    static_cast<ClInstance*>(object)->scope_parent != nullptr) {
+		// Case 1: Recursive lookup.
+		// Note that we MUST set bind_methods to false on this lookup, so that we don't end up accidentally returning something that is bound to our parent.
+		lookup_result_obj = cl_lookup_in_object_table(static_cast<ClInstance*>(object)->scope_parent, name, false);
+		// XXX: Think carefully about this dec ref that is to follow...
+		// It's necessary because our protocol means that cl_lookup_in_object_table causes an increment, but we're not storing this object anywhere.
+		// But what if looking up returns an object with ref count 1, somehow?
+		// For example, it could do this if it generated an object dynamically, like a bound method, or with some __getattr__ style handler.
+		// For now I put in an assertion, and check for this. I think my design here is fundamentally bad.
+		// One solution would be to set a flag if this recursive case is hit, and do one more dec ref on this object later.
+		if (lookup_result_obj->ref_count <= 1) {
+			cl_crash("BUG BUG BUG: Read the comments near this line in operations.cpp -- recursive lookup is fundamentally implemented wrong!");
+		}
+		lookup_result_obj->dec_ref();
+		
+	} else if (lookup_result == object_table->end()) {
+		// Case 2: Attribute not found error.
+		string message = string("No attribute \"") + name + "\" found.";
 		object->parent->traceback_and_crash(message);
-//		// This increment is correct and necessary.
-//		object->parent->nil->inc_ref();
-//		return object->parent->nil;
+	} else {
+		// Case 3: Attribute found, normal lookup.
+		// Otherwise, increment the reference count and return the object we got.
+		lookup_result_obj = (*lookup_result).second;
 	}
-	// Otherwise, increment the reference count and return the object we got.
-	ClObj* result_obj = (*result).second;
-	result_obj->inc_ref();
-	return result_obj;
+	// If we are to bind methods, and we're pulling out a method, then bind it.
+	if (bind_methods and
+		lookup_result_obj->kind == CL_FUNCTION and
+		static_cast<ClFunction*>(lookup_result_obj)->is_method) {
+		// Bind the method to ``object'', which is the object we pulled it from.
+		ClFunction* bound_result = static_cast<ClFunction*>(lookup_result_obj)->produce_bound_method(object);
+		return bound_result;
+	}
+	lookup_result_obj->inc_ref();
+	return lookup_result_obj;
 }
 
 void cl_store_to_object_table(ClObj* object_to_store_in, ClObj* value_to_store, const string& name) {
 	if (object_to_store_in->kind != CL_INSTANCE)
-		object_to_store_in->parent->traceback_and_crash("Attempt to mutate table of non-instance.");
+		object_to_store_in->parent->traceback_and_crash(string("Attempt to mutate table of non-instance of kind ") + cl_kind_to_name[object_to_store_in->kind]);
 	unordered_map<string, ClObj*>& object_table = static_cast<ClInstance*>(object_to_store_in)->table;
 	// Decrement the ref count on the old object if we're overwriting.
 	auto result = object_table.find(name);
@@ -274,26 +331,31 @@ void cl_store_by_index(ClObj* _indexed_obj, ClObj* _index_value, ClObj* stored_o
 
 // ===== Built-in functions =====
 
-ClObj* cl_builtin_nil_to_string(ClFunction* this_function, ClObj* _argument) {
+#define ASSERT_ARGUMENT_COUNT(n) \
+	if (argument_count != n) { \
+		cl_crash("BUG BUG BUG: Bad argument count in native builtin! The checks in cl_perform_function_call should make this impossible."); \
+	}
+
+ClObj* cl_builtin_nil_to_string(ClFunction* this_function, int argument_count, ClObj** arguments) {
+	ASSERT_ARGUMENT_COUNT(0)
 	ClDataContext* data_ctx = this_function->parent;
-	assert_kind<ClNil>(_argument);
 	ClString* result = data_ctx->create<ClString>();
 	result->contents = "nil";
 	return result;
 }
 
-ClObj* cl_builtin_int_to_string(ClFunction* this_function, ClObj* _argument) {
+ClObj* cl_builtin_int_to_string(ClFunction* this_function, int argument_count, ClObj** arguments) {
+	ASSERT_ARGUMENT_COUNT(0)
 	ClDataContext* data_ctx = this_function->parent;
-	assert_kind<ClNil>(_argument);
 	ClInt* argument = assert_kind<ClInt>(this_function->closed_this);
 	ClString* result = data_ctx->create<ClString>();
 	result->contents = to_string(argument->value);
 	return result;
 }
 
-ClObj* cl_builtin_bool_to_string(ClFunction* this_function, ClObj* _argument) {
+ClObj* cl_builtin_bool_to_string(ClFunction* this_function, int argument_count, ClObj** arguments) {
+	ASSERT_ARGUMENT_COUNT(0)
 	ClDataContext* data_ctx = this_function->parent;
-	assert_kind<ClNil>(_argument);
 	ClBool* argument = assert_kind<ClBool>(this_function->closed_this);
 	ClString* result = data_ctx->create<ClString>();
 	if (argument->truth_value)
@@ -303,9 +365,9 @@ ClObj* cl_builtin_bool_to_string(ClFunction* this_function, ClObj* _argument) {
 	return result;
 }
 
-ClObj* cl_builtin_list_to_string(ClFunction* this_function, ClObj* _argument) {
+ClObj* cl_builtin_list_to_string(ClFunction* this_function, int argument_count, ClObj** arguments) {
+	ASSERT_ARGUMENT_COUNT(0)
 	ClDataContext* data_ctx = this_function->parent;
-	assert_kind<ClNil>(_argument);
 	ClList* argument = assert_kind<ClList>(this_function->closed_this);
 	ClString* result = data_ctx->create<ClString>();
 	stringstream ss;
@@ -323,18 +385,19 @@ ClObj* cl_builtin_list_to_string(ClFunction* this_function, ClObj* _argument) {
 	return result;
 }
 
-ClObj* cl_builtin_list_append(ClFunction* this_function, ClObj* argument) {
+ClObj* cl_builtin_list_append(ClFunction* this_function, int argument_count, ClObj** arguments) {
+	ASSERT_ARGUMENT_COUNT(1)
 	ClList* this_list = assert_kind<ClList>(this_function->closed_this);
-	this_list->contents.push_back(argument);
+	this_list->contents.push_back(arguments[0]);
 	// Must double increment reference when returning.
 	// Once because we've stored the object in the list, and once because we're returning it.
-	argument->inc_ref();
-	argument->inc_ref();
-	return argument;
+	arguments[0]->inc_ref();
+	arguments[0]->inc_ref();
+	return arguments[0];
 }
 
-ClObj* cl_builtin_list_iter(ClFunction* this_function, ClObj* argument) {
-	assert_kind<ClNil>(argument);
+ClObj* cl_builtin_list_iter(ClFunction* this_function, int argument_count, ClObj** arguments) {
+	ASSERT_ARGUMENT_COUNT(0)
 	ClList* this_list = assert_kind<ClList>(this_function->closed_this);
 	// We interpret the native cache as an int64_t, which we use as an index into the list.
 	uint64_t& iteration_index = *reinterpret_cast<uint64_t*>(&this_function->native_executable_cache);
@@ -352,7 +415,9 @@ ClObj* cl_builtin_list_iter(ClFunction* this_function, ClObj* argument) {
 	return obj;
 }
 
-ClObj* cl_builtin_len(ClFunction* this_function, ClObj* argument) {
+ClObj* cl_builtin_len(ClFunction* this_function, int argument_count, ClObj** arguments) {
+	ASSERT_ARGUMENT_COUNT(1)
+	ClObj* argument = arguments[0];
 	ClDataContext* data_ctx = this_function->parent;
 	cl_int_t value;
 	switch (argument->kind) {
@@ -373,16 +438,18 @@ ClObj* cl_builtin_len(ClFunction* this_function, ClObj* argument) {
 	return result;
 }
 
-ClObj* cl_builtin_methodify(ClFunction* this_function, ClObj* argument) {
-	ClFunction* func = assert_kind<ClFunction>(argument);
+ClObj* cl_builtin_methodify(ClFunction* this_function, int argument_count, ClObj** arguments) {
+	ASSERT_ARGUMENT_COUNT(1)
+	ClFunction* func = assert_kind<ClFunction>(arguments[0]);
 	func->is_method = true;
 	func->inc_ref();
 	return func;
 }
 
-ClObj* cl_builtin_upto(ClFunction* this_function, ClObj* argument) {
+ClObj* cl_builtin_upto(ClFunction* this_function, int argument_count, ClObj** arguments) {
+	ASSERT_ARGUMENT_COUNT(1)
 	ClDataContext* data_ctx = this_function->parent;
-	cl_int_t count_upto_argument = assert_kind<ClInt>(argument)->value;
+	cl_int_t count_upto_argument = assert_kind<ClInt>(arguments[0])->value;
 	ClInstance* result = data_ctx->create<ClInstance>();
 	// Make the new result instance inherit from our closed this.
 	result->scope_parent = assert_kind<ClInstance>(this_function->closed_this);
@@ -396,7 +463,8 @@ ClObj* cl_builtin_upto(ClFunction* this_function, ClObj* argument) {
 	return result;
 }
 
-ClObj* cl_builtin_upto_base_iter(ClFunction* this_function, ClObj* argument) {
+ClObj* cl_builtin_upto_base_iter(ClFunction* this_function, int argument_count, ClObj** arguments) {
+	ASSERT_ARGUMENT_COUNT(0)
 	ClDataContext* data_ctx = this_function->parent;
 	ClInstance& this_instance = *assert_kind<ClInstance>(this_function->closed_this);
 	// We now do some unsafe manipulations for efficiency.
@@ -414,7 +482,7 @@ ClObj* cl_builtin_upto_base_iter(ClFunction* this_function, ClObj* argument) {
 		return i;
 	}
 	// Otherwise, stop iteration.
-	ClStopIteration* stop_iteration = this_function->parent->stop_iteration;
+	ClStopIteration* stop_iteration = data_ctx->stop_iteration;
 	stop_iteration->inc_ref();
 	return stop_iteration;
 }

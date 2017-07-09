@@ -408,7 +408,7 @@ class BNFParser:
 
 class Lexer:
 	"""Lexer
-	___init__(self, text)
+	__init__(self, text)
 
 	Use with Lexer.lex(self, string) -> sequence of tokens.
 

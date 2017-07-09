@@ -99,10 +99,11 @@ def make_assembly_unit(s):
 			args = args[0].split()
 			assert args.pop(-1) == "{"
 			function_name = args[0]
+			function_argument_count = int(args[1])
 			# We now read out the closure specifier.
-			subscope_length = int(args[1])
+			subscope_length = int(args[2])
 			subscope_closure_descriptors = []
-			for i in args[2:]:
+			for i in args[3:]:
 				load_index, store_index = map(int, i.split("->"))
 				subscope_closure_descriptors.append((load_index, store_index))
 			new_assembly_unit = AssemblyUnit()
@@ -110,6 +111,7 @@ def make_assembly_unit(s):
 				"name": "MAKE_FUNCTION",
 				"args": [],
 				"function_name": function_name,
+				"function_argument_count": function_argument_count,
 				"subscope_length": subscope_length,
 				"subscope_closure_descriptors": subscope_closure_descriptors,
 				"contents": new_assembly_unit,
@@ -149,6 +151,8 @@ def assemble(assembly_unit, source_file_path):
 			source_file_path = source_file_path
 			data_field += struct.pack("<I", len(source_file_path))
 			data_field += source_file_path
+			# Include the argument count.
+			data_field += struct.pack("<I", op["function_argument_count"])
 			# Next, include the subscope length.
 			data_field += struct.pack("<I", op["subscope_length"])
 			# Then include the number of closure descriptors.

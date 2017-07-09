@@ -2,6 +2,7 @@
 
 //#define DEBUG_OUTPUT
 
+#include <unordered_set>
 #include <iterator>
 #include <iostream>
 #include <istream>
@@ -41,6 +42,9 @@ size_t ClMakeFunctionDescriptor::read_from(const char* data, size_t length) {
 
 	// Then we read in the source file for the function.
 	READ_STRING(source_file_path);
+
+	// Read in the number of arguments that the function expects.
+	READ_INTO(function_argument_count, uint32_t);
 
 	// Next we read out the subscope size.
 	READ_INTO(subscope_length, uint32_t);
@@ -139,9 +143,28 @@ ClInstructionSequence* ClInstructionSequence::decode_opcodes(const string& s) {
 void ClInstructionSequence::pprint(ostream& os, int indentation) const {
 //	if (indentation == 2)
 //		os << "Instructions: (" << instructions.size() << ")" << endl;
+	// Build an index of which instruction indices are jumped to.
+	unordered_set<int> jumped_to_addresses;
 	for (auto& instr : instructions) {
+		if (instr.opcode == OPCODE_INDEX("ITERATE") or
+			instr.opcode == OPCODE_INDEX("JUMP") or
+			instr.opcode == OPCODE_INDEX("JUMP_IF_TRUTHY") or
+			instr.opcode == OPCODE_INDEX("JUMP_IF_FALSEY")) {
+			jumped_to_addresses.insert(instr.args[0]);
+		}
+	}
+	int index = -1;
+	for (auto& instr : instructions) {
+		index++;
 		ClOpcodeDesc desc = cl_opcode_descs[instr.opcode];
-		for (int i = 0; i < indentation; i++)
+		int just_this_line_indentation = indentation;
+		if (jumped_to_addresses.count(index) != 0) {
+			stringstream ss;
+			ss << index << ":";
+			os << ss.str();
+			just_this_line_indentation -= ss.str().size();
+		}
+		for (int i = 0; i < just_this_line_indentation; i++)
 			os << " ";
 		os << desc.name;
 		for (int i = 0; i < desc.argument_count; i++) {
@@ -150,7 +173,8 @@ void ClInstructionSequence::pprint(ostream& os, int indentation) const {
 		}
 		// If the instruction is a MAKE_FUNCTION, then recursively print the contents of the function.
 		if (instr.opcode == OPCODE_INDEX("MAKE_FUNCTION")) {
-			os << " " << instr.make_function_descriptor.subscope_length;
+			os << " args=" << instr.make_function_descriptor.function_argument_count;
+			os << " subscope=" << instr.make_function_descriptor.subscope_length;
 			for (auto& p : instr.make_function_descriptor.subscope_closure_descriptor) {
 				os << " " << p.first << "->" << p.second;
 			}
@@ -179,24 +203,26 @@ ClContext::ClContext() {
 	data_ctx = new ClDataContext();
 	ClFunction* f;
 
-#define MAKE_METHOD(kind, name, function) \
+#define MAKE_METHOD(kind, name, function_argument_count, function) \
 	f = data_ctx->create<ClFunction>(); \
+	f->argument_count = function_argument_count; \
 	f->function_name = data_ctx->register_permanent_string(name); \
 	f->source_file_path = nullptr; \
 	f->is_method = true; \
 	f->native_executable_content = function; \
 	data_ctx->default_type_tables[kind][name] = f;
 
-#define MAKE_MEMBER_FUNCTION(instance, name, function, should_be_a_method) \
+#define MAKE_MEMBER_FUNCTION(instance, name, function_argument_count, function, should_be_a_method) \
 	f = data_ctx->create<ClFunction>(); \
+	f->argument_count = function_argument_count; \
 	f->function_name = data_ctx->register_permanent_string(name); \
 	f->source_file_path = nullptr; \
 	f->is_method = should_be_a_method; \
 	f->native_executable_content = function; \
 	instance->table[name] = f;
 
-#define MAKE_GLOBAL(name, function) \
-	MAKE_MEMBER_FUNCTION(data_ctx->global_scope, name, function, false)
+#define MAKE_GLOBAL(name, function_argument_count, function) \
+	MAKE_MEMBER_FUNCTION(data_ctx->global_scope, name, function_argument_count, function, false)
 
 #define SET_TYPE_STRING(kind, type_string) \
 	s = data_ctx->create<ClString>(); \
@@ -204,13 +230,13 @@ ClContext::ClContext() {
 	data_ctx->default_type_tables[kind]["type"] = s;
 
 	// Populate the methods for the basic types.
-	MAKE_METHOD(CL_NIL, "to_string", cl_builtin_nil_to_string)
-	MAKE_METHOD(CL_INT, "to_string", cl_builtin_int_to_string)
-	MAKE_METHOD(CL_BOOL, "to_string", cl_builtin_bool_to_string)
-	MAKE_METHOD(CL_LIST, "to_string", cl_builtin_list_to_string)
+	MAKE_METHOD(CL_NIL, "str", 0, cl_builtin_nil_to_string)
+	MAKE_METHOD(CL_INT, "str", 0, cl_builtin_int_to_string)
+	MAKE_METHOD(CL_BOOL, "str", 0, cl_builtin_bool_to_string)
+	MAKE_METHOD(CL_LIST, "str", 0, cl_builtin_list_to_string)
 
-	MAKE_METHOD(CL_LIST, "append", cl_builtin_list_append)
-	MAKE_METHOD(CL_LIST, "iter", cl_builtin_list_iter)
+	MAKE_METHOD(CL_LIST, "append", 1, cl_builtin_list_append)
+	MAKE_METHOD(CL_LIST, "iter", 0, cl_builtin_list_iter)
 //	MAKE_METHOD(CL_LIST, "sort", cl_builtin_list_sort)
 //	MAKE_METHOD(CL_LIST, "copy", cl_builtin_list_copy)
 
@@ -228,17 +254,17 @@ ClContext::ClContext() {
 	SET_TYPE_STRING(CL_INSTANCE, "instance")
 
 	// Populate the global scope with builtin functions.
-	MAKE_GLOBAL("len", cl_builtin_len)
-	MAKE_GLOBAL("methodify", cl_builtin_methodify)
+	MAKE_GLOBAL("len", 1, cl_builtin_len)
+	MAKE_GLOBAL("methodify", 1, cl_builtin_methodify)
 
 	// Upto is a complicated construction.
 	// Its "closed_this" points to an instance, which it returns children of.
 	// This instance has a single "iter" method, that we extract.
-	MAKE_GLOBAL("upto", cl_builtin_upto)
+	MAKE_GLOBAL("upto", 1, cl_builtin_upto)
 	// Give upto a closure over an appropriate instance.
 	ClInstance* upto_base = data_ctx->create<ClInstance>();
 	f->closed_this = upto_base;
-	MAKE_MEMBER_FUNCTION(upto_base, "iter", cl_builtin_upto_base_iter, true)
+	MAKE_MEMBER_FUNCTION(upto_base, "iter", 0, cl_builtin_upto_base_iter, true)
 
 	// Populate the global scope with builtin values.
 	cl_store_to_object_table(data_ctx->global_scope, data_ctx->nil, "nil");
@@ -254,7 +280,7 @@ ClContext::~ClContext() {
 
 static ClObj* pop(vector<ClObj*>& stack) {
 	if (stack.size() == 0)
-		cl_crash("Stack underflow.");
+		cl_crash("Stack underflow on pop.");
 	auto obj = stack.back();
 	stack.pop_back();
 	return obj;
@@ -284,7 +310,7 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 		cout << "[" << instruction_pointer-1 << "] Executing: " << cl_opcode_descs[instruction.opcode].name;
 		for (auto& p : stack)
 			cout << ", " << *p;
-		cout << "     " << data_ctx->global_scope;
+//		cout << "     " << data_ctx->global_scope;
 		cout << endl;
 
 		size_t starting_stack_size = stack.size();
@@ -309,7 +335,7 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 			}
 			case OPCODE_INDEX("DUP"): {
 				if (stack.size() == 0)
-					cl_crash("Stack underflow.");
+					cl_crash("Stack underflow on dup.");
 				ClObj* obj = stack.back();
 				obj->inc_ref();
 				stack.push_back(obj);
@@ -372,6 +398,7 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 
 				// To make a function we produce a new record for its scope.
 				ClMakeFunctionDescriptor& desc = instruction.make_function_descriptor;
+				obj->argument_count = desc.function_argument_count;
 				obj->function_name = &desc.function_name;
 				obj->source_file_path = &desc.source_file_path;
 				ClRecord* func_scope = new ClRecord(0, desc.subscope_length, data_ctx->nil);
@@ -399,18 +426,32 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 				break;
 			}
 			case OPCODE_INDEX("CALL"): {
-				// First we pop the function argument off the stack.
-				// We do not decrement the ref count yet, because this could cause it to be prematurely collected.
-				ClObj* function_argument = pop(stack);
-				// Now we pop the actual function off the stack.
-				// We will decrement the ref count on this function, but only once we're done evaluating everything.
-				ClObj* supposed_function = pop(stack);
-				ClObj* return_value = cl_perform_function_call(this, supposed_function, function_argument);
+				// The instruction argument is the count of arguments that we are passing in.
+				uint32_t function_argument_count = instruction.args[0];
+				// We need the stack to have these arguments, plus one additional value for the function itself.
+				if (stack.size() < function_argument_count + 1)
+					cl_crash("Stack underflow on call.");
+				ClObj*& supposed_function = stack[stack.size() - function_argument_count - 1];
+				// The first function argument lives right after the supposed function object that we are calling.
+				ClObj** first_function_argument = (&supposed_function) + 1;
+//				// First we pop the function argument off the stack.
+//				// We do not decrement the ref count yet, because this could cause it to be prematurely collected.
+//				ClObj* function_argument = pop(stack);
+//				// Now we pop the actual function off the stack.
+//				// We will decrement the ref count on this function, but only once we're done evaluating everything.
+//				ClObj* supposed_function = pop(stack);
+				// Here we take advantage of the fact that vectors are backed by a contiguous array.
+				// Thus, we pass a pointer to the first function argument,
+				ClObj* return_value = cl_perform_function_call(this, supposed_function, function_argument_count, first_function_argument);
 				if (return_value->kind == CL_STOP_ITERATION)
 					cl_crash("Stop iteration outside of looping context.");
-				// Now that execution of the call is over, it is safe to decerement the ref count on the function and argument.
-				supposed_function->dec_ref();
-				function_argument->dec_ref();
+//				// Now that execution of the call is over, it is safe to decerement the ref count on the function and argument.
+//				supposed_function->dec_ref();
+//				function_argument->dec_ref();
+				// TODO: Decrease stack size, and decrement reference counts.
+				for (uint32_t i = 0; i < function_argument_count + 1; i++) {
+					pop(stack)->dec_ref();
+				}
 				// We push the return value onto our stack and do NOT increment the reference count, because
 				// the reference count was never decremented when the object was popped off the callee's stack.
 				stack.push_back(return_value);
@@ -418,11 +459,11 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 			}
 			case OPCODE_INDEX("ITERATE"): {
 				if (stack.size() == 0)
-					cl_crash("Stack underflow.");
+					cl_crash("Stack underflow on iterate.");
 				ClObj* iterator = stack.back();
 				// The nil inc_ref/dec_ref pair here is probably not necessary, but makes us strictly follow our protocol.
 				data_ctx->nil->inc_ref();
-				ClObj* return_value = cl_perform_function_call(this, iterator, data_ctx->nil);
+				ClObj* return_value = cl_perform_function_call(this, iterator, 0, nullptr);
 				data_ctx->nil->dec_ref();
 				// If the value is a ClStopIteration, then jump to the target.
 				if (return_value->kind == CL_STOP_ITERATION) {
@@ -443,7 +484,7 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 			case OPCODE_INDEX("LIST_APPEND"): {
 				ClObj* new_item = pop(stack);
 				if (stack.size() == 0)
-					cl_crash("Stack underflow.");
+					cl_crash("Stack underflow on primitive list append.");
 				ClObj* possibly_list = stack.back();
 				if (possibly_list->kind != CL_LIST)
 					data_ctx->traceback_and_crash("Attempted to append onto non-list.");
@@ -460,10 +501,11 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 					obj_to_load_from = data_ctx->global_scope;
 				else
 					obj_to_load_from = pop(stack);
-				ClObj* result = cl_lookup_in_object_table(obj_to_load_from, instruction.data_field);
+				ClObj* result = cl_lookup_in_object_table(obj_to_load_from, instruction.data_field, true);
 				// If the resultant object is a method, then bind it.
 				// XXX: TODO: Check ref counting.
-				if (result->kind == CL_FUNCTION && static_cast<ClFunction*>(result)->is_method) {
+/*
+				if (result->kind == CL_FUNCTION and static_cast<ClFunction*>(result)->is_method) {
 					ClFunction* new_result = static_cast<ClFunction*>(result)->produce_bound_method(obj_to_load_from);
 					data_ctx->register_object(new_result);
 					// We now decrement the reference on ``result'', because we're not storing it anywhere,
@@ -471,6 +513,7 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 					result->dec_ref();
 					result = new_result;
 				}
+*/
 				// We don't need to increment result's ref count, because cl_lookup_in_object_table does it for us.
 				// Here we dec ref only if we popped the object loaded from off the stack.
 				if (instruction.opcode != OPCODE_INDEX("GLOBAL_LOAD"))
@@ -696,7 +739,7 @@ void ClContext::load_from_shared_object(string path, ClInstance* load_into_here)
 			case CL_FUNCTION: {
 				ClFunction* _obj = data_ctx->create<ClFunction>();
 				obj = _obj;
-				_obj->native_executable_content = (ClObj* (*)(ClFunction* this_function, ClObj* argument)) entry.value;
+				_obj->native_executable_content = (ClObj* (*)(ClFunction* this_function, int argument_count, ClObj** arguments)) entry.value;
 				new_object_that_needs_dec_ref = true;
 				break;
 			}

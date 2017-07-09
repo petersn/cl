@@ -8,6 +8,7 @@ comment~         = #.*
 
 literal_cl_assembly = >>>.*
 
+formatting       = :"(\\.|[^"\\])*":
 keyword          = (def|if|else|elif|for|while|break|continue|class|return|end|print|@)(?!['a-zA-Z_])
 op_group_logic   = (and|or)(?!['a-zA-Z_])
 reserved         = \\|->

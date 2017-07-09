@@ -49,7 +49,7 @@ constexpr ClOpcodeDesc cl_opcode_descs[] = {
 	ClOpcodeDesc({"MAKE_FUNCTION",   0,  1, true }),
 	ClOpcodeDesc({"MAKE_INSTANCE",   0,  1, false}),
 	ClOpcodeDesc({"MAKE_INSTANCE_P", 0,  0, false}),
-	ClOpcodeDesc({"CALL",            0, -1, false}),
+	ClOpcodeDesc({"CALL",            1,-99, false}),
 	// ITERATE has a stack delta of 0 if iteration is over, and +1 otherwise. :/
 	// I haven't yet figured out what I want to do about this.
 	// For now I set it to -99, to indicate that no value is correct.
@@ -128,6 +128,7 @@ namespace cl_template_trickery {
 // This is a descriptor for the MAKE_FUNCTION opcode, and thus the name should be interpreted
 // left associatively, that is, a ((make function) descriptor) not a (make (function descriptor)).
 struct ClMakeFunctionDescriptor {
+	uint32_t function_argument_count = 0;
 	uint32_t subscope_length = 0;
 	std::vector<std::pair<int, int>> subscope_closure_descriptor;
 	ClInstructionSequence* executable_content = nullptr;
@@ -184,21 +185,21 @@ public:
 };
 
 bool cl_coerce_to_boolean(ClObj* obj);
-ClObj* cl_perform_function_call(ClContext* ctx, ClObj* supposed_function, ClObj* argument);
-ClObj* cl_lookup_in_object_table(ClObj* object, const std::string& name);
+ClObj* cl_perform_function_call(ClContext* ctx, ClObj* supposed_function, int argument_count, ClObj** arguments);
+ClObj* cl_lookup_in_object_table(ClObj* object, const std::string& name, bool bind_methods);
 void cl_store_to_object_table(ClObj* object_to_store_in, ClObj* value_to_store, const std::string& name);
 void cl_store_by_index(ClObj* indexed_obj, ClObj* index_value, ClObj* stored_obj);
 
-ClObj* cl_builtin_nil_to_string(ClFunction* this_function, ClObj* argument);
-ClObj* cl_builtin_int_to_string(ClFunction* this_function, ClObj* argument);
-ClObj* cl_builtin_bool_to_string(ClFunction* this_function, ClObj* argument);
-ClObj* cl_builtin_list_to_string(ClFunction* this_function, ClObj* argument);
-ClObj* cl_builtin_list_append(ClFunction* this_function, ClObj* argument);
-ClObj* cl_builtin_list_iter(ClFunction* this_function, ClObj* argument);
-ClObj* cl_builtin_len(ClFunction* this_function, ClObj* argument);
-ClObj* cl_builtin_methodify(ClFunction* this_function, ClObj* argument);
-ClObj* cl_builtin_upto(ClFunction* this_function, ClObj* argument);
-ClObj* cl_builtin_upto_base_iter(ClFunction* this_function, ClObj* argument);
+ClObj* cl_builtin_nil_to_string(ClFunction* this_function, int argument_count, ClObj** arguments);
+ClObj* cl_builtin_int_to_string(ClFunction* this_function, int argument_count, ClObj** arguments);
+ClObj* cl_builtin_bool_to_string(ClFunction* this_function, int argument_count, ClObj** arguments);
+ClObj* cl_builtin_list_to_string(ClFunction* this_function, int argument_count, ClObj** arguments);
+ClObj* cl_builtin_list_append(ClFunction* this_function, int argument_count, ClObj** arguments);
+ClObj* cl_builtin_list_iter(ClFunction* this_function, int argument_count, ClObj** arguments);
+ClObj* cl_builtin_len(ClFunction* this_function, int argument_count, ClObj** arguments);
+ClObj* cl_builtin_methodify(ClFunction* this_function, int argument_count, ClObj** arguments);
+ClObj* cl_builtin_upto(ClFunction* this_function, int argument_count, ClObj** arguments);
+ClObj* cl_builtin_upto_base_iter(ClFunction* this_function, int argument_count, ClObj** arguments);
 
 // Our C API.
 extern "C" {

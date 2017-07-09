@@ -45,6 +45,7 @@ class ClContext:
 
 if __name__ == "__main__":
 	import sys
+	import readline
 
 	if len(sys.argv) not in (1, 2):
 		print "Usage: cl.py [input.cl]"

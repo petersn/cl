@@ -6,7 +6,7 @@ using namespace std;
 
 std::ostream& operator << (std::ostream& os, const ClObj& obj) {
 	obj.pprint(os);
-	os << "@" << obj.ref_count;
+//	os << "@" << obj.ref_count;
 	return os;
 }
 
@@ -47,7 +47,8 @@ void ClNil::pprint(ostream& os) const {
 // ===== ClInt =====
 
 void ClInt::pprint(ostream& os) const {
-	os << "Int(" << value << ")";
+//	os << "Int(" << value << ")";
+	os << value;
 }
 
 // ===== ClBool =====
@@ -166,6 +167,7 @@ void ClFunction::pprint(ostream& os) const {
 ClFunction* ClFunction::produce_bound_method(ClObj* object_who_has_method) {
 	auto bound_method = new ClFunction();
 	bound_method->executable_content = executable_content;
+	bound_method->argument_count = argument_count;
 	bound_method->closure = closure;
 	// We set is_method to false, to indicate that further pulling from an object shouldn't produce method binding.
 	bound_method->is_method = false;
@@ -178,6 +180,7 @@ ClFunction* ClFunction::produce_bound_method(ClObj* object_who_has_method) {
 	bound_method->source_file_path = source_file_path;
 
 	object_who_has_method->inc_ref();
+	parent->register_object(bound_method);
 	return bound_method;
 }
 

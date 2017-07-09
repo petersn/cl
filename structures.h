@@ -130,6 +130,7 @@ struct ClString : public ClObj {
 
 struct ClFunction : public ClObj {
 	// NB: If you add members here, patch up ClFunction::produce_bound_method to copy them over!
+	int argument_count;
 	// Every function consists of an executable content...
 	ClInstructionSequence* executable_content = nullptr;
 	// ... and a record for the local closure.
@@ -138,7 +139,7 @@ struct ClFunction : public ClObj {
 	bool is_method = false;
 	ClObj* closed_this = nullptr;
 	// Function pointer for implementing native functions.
-	ClObj* (*native_executable_content)(ClFunction* this_function, ClObj* argument) = nullptr;
+	ClObj* (*native_executable_content)(ClFunction* this_function, int argument_count, ClObj** arguments) = nullptr;
 	void* native_executable_cache = nullptr;
 	const std::string* function_name;
 	const std::string* source_file_path;
@@ -216,6 +217,9 @@ namespace cl_template_trickery {
 
 template <typename T>
 static inline T* assert_kind(ClObj* obj) {
+	if (obj == nullptr) {
+//		cl_crash("nullptr in assert_kind!");
+	}
 	if (obj->kind != cl_template_trickery::get_kind<T>::kind) {
 		std::string error_message = "Type error, expected a ";
 		error_message += std::string(cl_kind_to_name[cl_template_trickery::get_kind<T>::kind]);

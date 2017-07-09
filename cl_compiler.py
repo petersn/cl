@@ -70,10 +70,11 @@ class SyntaxElement:
 					("identifier", str),
 					("ident_seq", list),
 				]))
-			self.args_variables = set()
+			self.argument_names = []
 			for entry in self.args_seq:
 				arg, = Matcher.match_with(entry, ("identifier", str))
-				self.args_variables.add(arg)
+				self.argument_names.append(arg)
+			self.args_variables = set(self.argument_names)
 
 	def takes_block(self):
 		return self.kind in self.syntax_element_takes_block
@@ -228,6 +229,7 @@ class ClCompiler:
 			self.indent = indent
 			self.break_labels = []
 			self.continue_labels = []
+			self.needs_iterate_targets = False
 
 		def load(self, var):
 			if var in self.variable_table:
@@ -245,6 +247,17 @@ class ClCompiler:
 			for part in x.split("\n"):
 				self.target.append(" " * self.indent + part)
 
+		def finalize(self):
+			if self.needs_iterate_targets:
+				self.append("\n".join([
+					"JUMP traceback_block_skip",
+					"too_many_values_traceback:",
+					"TRACEBACK \"Too many values to unpack.\"",
+					"too_few_values_traceback:",
+					"TRACEBACK \"Too few values to unpack.\"",
+					"traceback_block_skip:",
+				]))
+
 	@staticmethod
 	def flatten(l):
 		"""flatten(nested lists) -> recursively flattened list"""
@@ -261,6 +274,28 @@ class ClCompiler:
 		assert s.startswith('"') and s.endswith('"')
 		# TODO: Handle escapes here.
 		return s[1:-1]
+
+	@staticmethod
+	def get_variables_from_assign_spec(assign_spec, locals_only):
+		"""get_variables_from_assign_spec(assign_spec, locals_only) -> set of variables
+		The same deal as compute_free_variables, but it knows about unpack_specs.
+		This is a separate function because variables are different in the context
+		of an assignment, and rather than propagating this state as an argument
+		to compute_free_variables, we simply define a different function here.
+		"""
+		kind = assign_spec[0]
+		if kind == "variable":
+			variable_name, = Matcher.match_with(assign_spec, ("variable", [("identifier", str)]))
+			return set([variable_name])
+		elif kind in ["dot_accessor", "indexing"]:
+			return ClCompiler.compute_free_variables(assign_spec, locals_only)
+		elif kind == "unpack_spec":
+			assignees = set()
+			for subassign in assign_spec[1]:
+				assignees |= ClCompiler.get_variables_from_assign_spec(subassign, locals_only)
+			return assignees
+		else:
+			raise ValueError("Unhandled assign_spec kind: %r" % (kind,))
 
 	@staticmethod
 	def compute_free_variables(ast, locals_only):
@@ -284,27 +319,7 @@ class ClCompiler:
 						tuple,
 						tuple,
 					]))
-				def get_variables_from_assign_spec(assign_spec):
-					"""get_variables_from_assign_spec(assign_spec) -> set of variables
-					The same deal as compute_free_variables, but it knows about unpack_specs.
-					This is a separate function because variables are different in the context
-					of an assignment, and rather than propagating this state as an argument
-					to compute_free_variables, we simply define a different function here.
-					"""
-					kind = assign_spec[0]
-					if kind == "variable":
-						variable_name, = Matcher.match_with(assign_spec, ("variable", [("identifier", str)]))
-						return set([variable_name])
-					elif kind in ["dot_accessor", "indexing"]:
-						return ClCompiler.compute_free_variables(assign_spec, locals_only)
-					elif kind == "unpack_spec":
-						assignees = set()
-						for subassign in assign_spec[1]:
-							assignees |= get_variables_from_assign_spec(subassign)
-						return assignees
-					else:
-						raise ValueError("Unhandled assign_spec kind: %r" % (kind,))
-				return get_variables_from_assign_spec(assign_spec) | \
+				return ClCompiler.get_variables_from_assign_spec(assign_spec, locals_only) | \
 				       ClCompiler.compute_free_variables(expr, locals_only)
 			elif node_type == "function_definition":
 				ast.finalize()
@@ -317,7 +332,7 @@ class ClCompiler:
 				return ClCompiler.compute_free_variables(ast.ast[1], locals_only) | ClCompiler.compute_free_variables(ast.block, locals_only)
 			raise ValueError("Unhandled syntax element type: %r" % (ast.ast,))
 
-		# At this point we are guaranteed to be a tuple from the raw AST given by our parser.
+		# At this point ``ast'' is guaranteed to be a tuple from the raw AST given by our parser.
 		node_type, = Matcher.match_with(ast, (str, Matcher.DropAny()))
 
 		if node_type in ["literal", "variable", "unpack_spec", "list_comp"]:
@@ -374,7 +389,7 @@ class ClCompiler:
 					tuple,
 					tuple,
 				]))
-			return ClCompiler.compute_free_variables(assign_spec, locals_only) | \
+			return ClCompiler.get_variables_from_assign_spec(assign_spec, locals_only) | \
 			       ClCompiler.compute_free_variables(expr, locals_only)
 		elif node_type in ["integer", "string", "this"]:
 			return set()
@@ -386,16 +401,15 @@ class ClCompiler:
 		too_few_label = self.new_label()
 		# Begin pulling out values, and assigning.
 		for assignment_target in unpack_spec_contents:
-			ctx.append("ITERATE %s" % too_few_label)
+			ctx.append("ITERATE too_few_values_traceback")
 			self.generate_consumer_for_assign_spec(assignment_target, ctx)
 		# Finally, iterate one last time, to rule out too many.
 		good_label = self.new_label()
 		ctx.append("ITERATE %s" % good_label)
-		ctx.append("TRACEBACK \"Too many values to unpack.\"")
-		ctx.append("%s:" % too_few_label)
-		ctx.append("TRACEBACK \"Too few values to unpack.\"")
+		ctx.append("JUMP too_many_values_traceback")
 		ctx.append("%s:" % good_label)
 		ctx.append("POP")
+		ctx.needs_iterate_targets = True
 
 	def generate_consumer_for_assign_spec(self, assign_spec, ctx):
 		target_type, target_contents = Matcher.match_with(assign_spec, (str, list))
@@ -464,10 +478,13 @@ class ClCompiler:
 			ctx.append("%s:" % done_iterating_label)
 			ctx.append("POP")
 		elif node_type == "function_call":
-			expr1, expr2 = Matcher.match_with(expr, ("function_call", [tuple, tuple]))
-			self.generate_bytecode_for_expr(expr1, ctx)
-			self.generate_bytecode_for_expr(expr2, ctx)
-			ctx.append("CALL")
+			# Here we extract all the expressions that constitute the function call.
+
+			# The first one is always the function expression, and the remainder are arguments.
+			function_call_contents, = Matcher.match_with(expr, ("function_call", list))
+			for content in function_call_contents:
+				self.generate_bytecode_for_expr(content, ctx)
+			ctx.append("CALL %i" % (len(function_call_contents) - 1))
 		elif node_type == "dot_accessor":
 			sub_expr, dot_access_name = Matcher.match_with(expr,
 				("dot_accessor", [
@@ -529,11 +546,60 @@ class ClCompiler:
 					("identifier", str),
 					tuple,
 				]))
-			raise NotImplementedError
+			block = [
+				SyntaxElement(
+					ast = ("return", [expr]),
+					line_number = 0, # TODO: Insert proper line number here.
+				)
+			]
+			self.generate_bytecode_for_function_ast(ctx, "<lambda>", [variable_name], block)
 		else:
 			raise ValueError("Unhandled expr node_type type: %r" % (node_type,))
 
 #		ctx.append("# EXPR: %r" % (expr,))
+
+	def generate_bytecode_for_function_ast(self, ctx, function_name, argument_names, function_body_block, class_mode=False):
+		# Generate an appropriate closure.
+		# The full inner variable table is just all the free variables used inside.
+		argument_count = len(argument_names)
+		body_free   = ClCompiler.compute_free_variables(function_body_block, locals_only=False)
+		print "========== Computing body locals ========="
+		body_locals = ClCompiler.compute_free_variables(function_body_block, locals_only=True)
+		# Map the function argument to be the first entry in the variable table.
+
+		print "Body free:  ", body_free
+		print "Body locals:", body_locals
+
+		# We close precisely when the variable in question is referenced, but not
+		# assigned in the function, and we have the variable in our variable table.
+		closure_vars = body_free - body_locals - set(argument_names)
+		print "Closure candidates:", closure_vars
+		print "Variable table:", ctx.variable_table
+		closure_vars &= set(ctx.variable_table)
+		inner_variable_table = list((body_locals | closure_vars) - set(argument_names))
+		inner_variable_table = argument_names + inner_variable_table
+		print "Final closure:", closure_vars
+		print "Inner table:", inner_variable_table
+		print
+
+		transfer_records = [
+			(ctx.variable_table.index(var), inner_variable_table.index(var))
+			for var in closure_vars if var in ctx.variable_table
+		]
+		transfer_records_string = "".join(" %i->%i" % pair for pair in transfer_records)
+		body = []
+		definition = ["MAKE_FUNCTION %s %s %s%s {" % (function_name, argument_count, len(inner_variable_table), transfer_records_string), body, "}"]
+		inner_ctx = ClCompiler.CompilationContext(body, inner_variable_table, indent=2)
+		self.generate_bytecode_for_seq(function_body_block, inner_ctx)
+		inner_ctx.finalize()
+		# Finally, we flatten our definition.
+		def_string = "\n".join(self.flatten(definition))
+		ctx.append(def_string)
+		# If we're in class mode, then we mark the function as a method.
+		if class_mode:
+			ctx.load("methodify")
+			ctx.append("SWAP")
+			ctx.append("CALL 1")
 
 	def generate_bytecode_for_seq(self, syntax_elem_seq, ctx, class_mode=False):
 		# Confirm that our input is a list of syntax elements.
@@ -542,7 +608,7 @@ class ClCompiler:
 #		ctx.append("# [%s]" % ", ".join(map(str, ctx.variable_table)))
 
 		for syntax_elem in syntax_elem_seq:
-#			ctx.append("  LINE_NUMBER %i" % syntax_elem.line_number)
+			ctx.append("  LINE_NUMBER %i" % syntax_elem.line_number)
 			ctx.append("  # %s" % syntax_elem.kind)
 			if syntax_elem.kind == "expr":
 				expr, = Matcher.match_with(syntax_elem.ast, ("expr", [tuple]))
@@ -555,6 +621,7 @@ class ClCompiler:
 				if len(expr_list) == 0:
 					ctx.append("MAKE_NIL")
 				else:
+					assert len(expr_list) == 1, "BUG BUG BUG: Return should only be able to have one expression in its AST."
 					# Otherwise, generate the return value, and return it.
 					self.generate_bytecode_for_expr(expr_list[0], ctx)
 				ctx.append("RETURN")
@@ -665,48 +732,7 @@ class ClCompiler:
 					exit(1)
 				ctx.append("JUMP %s" % label_list[-goto_index])
 			elif syntax_elem.kind == "function_definition":
-				# Generate an appropriate closure.
-				# The full inner variable table is just all the free variables used inside.
-				assert len(syntax_elem.args_seq) == 1, "For now only functions of one variable are supported."
-				argument_name, = Matcher.match_with(syntax_elem.args_seq[0], ("identifier", str))
-				inner_variable_table = list(syntax_elem.body_locals - set([argument_name]))
-				# Map the function argument to be the first entry in the variable table.
-				inner_variable_table = [argument_name] + inner_variable_table
-
-				# Compute the list of variables we're closing over.
-				print "\n\nDETERMINING THE CLOSURE VARIABLES."
-				print "I have this variable table:", ctx.variable_table
-				print "I have these body_locals:", syntax_elem.body_locals
-				print "I have these body_free:", syntax_elem.body_free
-				print "Args variables:", syntax_elem.args_variables
-
-				# We close precisely when the variable in question is referenced, but not
-				# assigned in the function, and we have the variable in our variable table.
-
-				closure_vars = syntax_elem.body_free - syntax_elem.body_locals - syntax_elem.args_variables
-				print "Closure candidates:", closure_vars
-				closure_vars &= set(ctx.variable_table)
-				print "Final closure:", closure_vars
-				print
-
-				transfer_records = [
-					(ctx.variable_table.index(var), inner_variable_table.index(var))
-					for var in closure_vars if var in ctx.variable_table
-				]
-				transfer_records_string = "".join(" %i->%i" % pair for pair in transfer_records)
-				body = []
-				definition = ["MAKE_FUNCTION %s %s%s {" % (syntax_elem.function_name, len(inner_variable_table), transfer_records_string), body, "}"]
-				inner_ctx = ClCompiler.CompilationContext(body, inner_variable_table, indent=2)
-				self.generate_bytecode_for_seq(syntax_elem.block, inner_ctx)
-				# Finally, we flatten our definition.
-				def_string = "\n".join(self.flatten(definition))
-				ctx.append(def_string)
-				# If we're in class mode, then we mark the function as a method.
-				if class_mode:
-					ctx.load("methodify")
-					ctx.append("SWAP")
-					ctx.append("CALL")
-				# We now have the function on the stack, so assign it into its name.
+				self.generate_bytecode_for_function_ast(ctx, syntax_elem.function_name, syntax_elem.argument_names, syntax_elem.block, class_mode=class_mode)
 				ctx.store(syntax_elem.function_name)
 			elif syntax_elem.kind == "class_block":
 				class_name, = Matcher.match_with(syntax_elem.ast, ("class_block", [("identifier", str)]))
@@ -739,14 +765,13 @@ class ClCompiler:
 		# First we compute the list of global variables.
 		global_vars = set() # = self.compute_local_variables(syntax_elem_seq, locals_only=True)
 		# We now allocate them in some order for our global record.
-		global_variable_table = [None] + sorted(global_vars)
-		# Here the None corresponds to the argument our MAKE_FUNCTION will ignore.
+		global_variable_table = sorted(global_vars)
 
 		body = []
-		output = ["MAKE_FUNCTION <root> %s {" % len(global_variable_table), body, "}", "MAKE_NIL", "CALL"]
+		output = ["MAKE_FUNCTION <root> 0 %s {" % len(global_variable_table), body, "}", "CALL 0"]
 		ctx = ClCompiler.CompilationContext(body, global_variable_table, indent=2)
 		self.generate_bytecode_for_seq(syntax_elem_seq, ctx)
-
+		ctx.finalize()
 		text = "\n".join(ClCompiler.flatten(output))
 		return text
 
@@ -763,11 +788,34 @@ def source_to_bytecode(source, source_file_path="<sourceless>"):
 	return bytecode
 
 if __name__ == "__main__":
-	source = """
+	source = r"""
 
-def func a b c
-	return a + b + c
+def list x
+	return [i | i <- x]
 end
+
+print list(upto(10))
+
+END_CL_INPUT
+
+#a = [ [ i * j | j <- upto(i)] | i <- upto(5) ]
+
+adders = [ \x -> (x + i) | i <- upto(10) ]
+print adders[3](4)
+
+#f = \k -> (k+1)
+
+#print f(1)
+
+#print [ a * b | (a,), b <- [[[2], 3], [[4], 5]]]
+
+END_CL_INPUT
+
+def func a
+	return a + 1
+end
+
+print func(1)
 
 END_CL_INPUT
 
