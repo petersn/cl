@@ -83,6 +83,8 @@ ClObj* ClContext::binary_times(ClObj* _left, ClObj* _right) {
 		// TODO: Replace with .reserve implementation.
 		for (cl_int_t i = 0; i < left->value; i++)
 			obj->contents.insert(obj->contents.end(), right->contents.begin(), right->contents.end());
+		for (ClObj* inserted : obj->contents)
+			inserted->inc_ref();
 	End_Case
 
 	// In case of string * int or list * int, just swap the order around.
@@ -134,23 +136,89 @@ ClObj* ClContext::binary_in(ClObj* _left, ClObj* _right) {
 	data_ctx->traceback_and_crash("Type error on binary in.");
 }
 
+// Maps a comparison result (from, e.g., memcmp) and a comparison type to an actual resulting truth value.
+static bool comparison_to_truth_value(int comparison, ClComparisonType comparison_type) {
+	switch (comparison_type) {
+		case (CL_COMP_EQ):                 return comparison == 0;
+		case (CL_COMP_NOT_EQ):             return comparison != 0;
+		case (CL_COMP_LESS_THAN):          return comparison <  0;
+		case (CL_COMP_GREATER_THAN):       return comparison >  0;
+		case (CL_COMP_LESS_THAN_OR_EQ):    return comparison <= 0;
+		case (CL_COMP_GREATER_THAN_OR_EQ): return comparison >= 0;
+		default: cl_crash("BUG BUG BUG: Bad comparison type.");
+	}
+}
+
 ClObj* ClContext::binary_compare(ClObj* _left, ClObj* _right, ClComparisonType comparison_type) {
 	Type_Case(ClInt, ClInt)
-		bool truth_value;
-		switch (comparison_type) {
-			case (CL_COMP_EQ):                 truth_value = left->value == right->value; break;
-			case (CL_COMP_NOT_EQ):             truth_value = left->value != right->value; break;
-			case (CL_COMP_LESS_THAN):          truth_value = left->value <  right->value; break;
-			case (CL_COMP_GREATER_THAN):       truth_value = left->value >  right->value; break;
-			case (CL_COMP_LESS_THAN_OR_EQ):    truth_value = left->value <= right->value; break;
-			case (CL_COMP_GREATER_THAN_OR_EQ): truth_value = left->value >= right->value; break;
-			default: cl_crash("Bad comparison kind in binary compare.");
-		}
+		int comparison_result =
+			left->value == right->value ? 0 :
+			(left->value < right->value ? -1 : 1);
 		// Grab the appropriate statically allocated boolean object.
+		bool truth_value = comparison_to_truth_value(comparison_result, comparison_type);
 		ClObj* obj = data_ctx->static_booleans[truth_value];
 		obj->inc_ref();
 		return obj;
 	End_Case
+
+	// XXX: TODO:
+	// Implement appropriation comparisons here for the built in types, and delegate to a method for instances.
+
+	Type_Case(ClString, ClString)
+		// Compare the string contents in asciibetical order as byte strings.
+		// TODO: Replace with appropriate std::min or something, when I have a network connection.
+		size_t left_length = left->contents.size();
+		size_t right_length = right->contents.size();
+		size_t minimum_length = left_length;
+		if (right_length < minimum_length)
+			minimum_length = right_length;
+		int comparison_result = memcmp(left->contents.data(), right->contents.data(), minimum_length);
+		// If the comparison yields equality, we break ties with overall string length.
+		if (comparison_result == 0) {
+			if (left_length < right_length)
+				comparison_result = -1;
+			else if (left_length > right_length)
+				comparison_result = 1;
+		}
+		// Finally, interpret this comparison_result subject to the requested comparison.
+		bool truth_value = comparison_to_truth_value(comparison_result, comparison_type);
+		ClObj* obj = data_ctx->static_booleans[truth_value];
+		obj->inc_ref();
+		return obj;
+	End_Case
+
+/*
+	Type_Case(ClList, ClList)
+		if (comparison_type != CL_COMP_EQ and comparison_type != CL_COMP_NOT_EQ)
+			data_ctx->traceback_and_crash("Currently only == and != are supported between lists.");
+		bool truth_value = false;
+		if (left->contents.size() != right->contents.size()) {
+			truth_value = false;
+		} else {
+			// Recursively compare the contents of the list.
+			for (size_t i = 0; i < left->contents.size(); i++) {
+			}
+		}
+	End_Case
+*/
+
+	// For generic comparisons we use some simple rules.
+	if (comparison_type == CL_COMP_EQ or comparison_type == CL_COMP_NOT_EQ) {
+		bool truth_value = false;
+		// Two objects of different kinds are never equal.
+		if (_left->kind != _right->kind) {
+			truth_value = false;
+		} else {
+			// Two objects of the same kind are equal only when they are isqual.
+			truth_value = _left == _right;
+		}
+		// If we are testing inequality, invert the result.
+		if (comparison_type == CL_COMP_NOT_EQ)
+			truth_value = not truth_value;
+		ClObj* obj = data_ctx->static_booleans[truth_value];
+		obj->inc_ref();
+		return obj;
+	}
 
 	data_ctx->traceback_and_crash("Type error on binary compare.");
 }
@@ -192,10 +260,10 @@ ClObj* cl_perform_function_call(ClContext* ctx, ClObj* supposed_function, int ar
 		// We now check if the instance has a construct method.
 		if (instance_obj->table.find("construct") != instance_obj->table.end()) {
 			ClObj* constructor = cl_lookup_in_object_table(instance_obj, "construct", true);
-			ClFunction* f = assert_kind<ClFunction>(constructor);
-			cout << f->argument_count << endl;
-			cout << f->is_method << endl;
-			cout << f->closed_this << endl;
+//			ClFunction* f = assert_kind<ClFunction>(constructor);
+//			cout << f->argument_count << endl;
+//			cout << f->is_method << endl;
+//			cout << f->closed_this << endl;
 			ClObj* ignored = cl_perform_function_call(ctx, constructor, argument_count, arguments);
 			ignored->dec_ref();
 			constructor->dec_ref();
@@ -220,6 +288,8 @@ ClObj* cl_perform_function_call(ClContext* ctx, ClObj* supposed_function, int ar
 		// === Native function call ===
 		return_value = function_obj->native_executable_content(function_obj, argument_count, arguments);
 	} else {
+		if (function_obj->executable_content == nullptr)
+			cl_crash("BUG BUG BUG: Somehow we're calling a function with null native_executable_content and null executable_content!");
 		// === Cl (non-native) function call ===
 		// We duplicate the function closure to get a scope to execute in.
 		// Note that we neither register nor set the ref count on this record, because we're about to throw it away.
@@ -398,6 +468,25 @@ ClObj* cl_builtin_list_append(ClFunction* this_function, int argument_count, ClO
 
 ClObj* cl_builtin_list_iter(ClFunction* this_function, int argument_count, ClObj** arguments) {
 	ASSERT_ARGUMENT_COUNT(0)
+//	ClList* this_list = assert_kind<ClList>(this_function->closed_this);
+	// Build the closure.
+	static const string* staticstring_listiterator = new string("listiterator");
+	ClFunction* f = this_function->parent->create_function(
+		0,
+		false,
+		staticstring_listiterator,
+		nullptr
+	);
+	f->native_executable_content = cl_builtin_list_iterator;
+	f->closed_this = this_function->closed_this;
+	f->closed_this->inc_ref();
+	f->cache_as<uint64_t>() = 0;
+	return f;
+}
+
+ClObj* cl_builtin_list_iterator(ClFunction* this_function, int argument_count, ClObj** arguments) {
+	ASSERT_ARGUMENT_COUNT(0)
+//	cout << "List iterator is being called." << endl;
 	ClList* this_list = assert_kind<ClList>(this_function->closed_this);
 	// We interpret the native cache as an int64_t, which we use as an index into the list.
 	uint64_t& iteration_index = *reinterpret_cast<uint64_t*>(&this_function->native_executable_cache);
@@ -411,6 +500,8 @@ ClObj* cl_builtin_list_iter(ClFunction* this_function, int argument_count, ClObj
 
 	// Otherwise, return the next value in line.
 	ClObj* obj = this_list->contents[iteration_index++];
+//	cout << "This closed list: " << this_list << " " << this_list->ref_count << endl;
+//	cout << "Returning this guy: " << obj << " " << obj->ref_count << endl;
 	obj->inc_ref();
 	return obj;
 }
@@ -446,6 +537,24 @@ ClObj* cl_builtin_methodify(ClFunction* this_function, int argument_count, ClObj
 	return func;
 }
 
+ClObj* cl_builtin_getparent(ClFunction* this_function, int argument_count, ClObj** arguments) {
+	ASSERT_ARGUMENT_COUNT(1)
+	ClInstance* instance = assert_kind<ClInstance>(arguments[0]);
+	if (instance->scope_parent == nullptr) {
+		this_function->parent->nil->inc_ref();
+		return this_function->parent->nil;
+	}
+	instance->scope_parent->inc_ref();
+	return instance->scope_parent;
+}
+
+ClObj* cl_builtin_getkind(ClFunction* this_function, int argument_count, ClObj** arguments) {
+	ASSERT_ARGUMENT_COUNT(1)
+	ClString* kind_string = this_function->parent->create<ClString>();
+	kind_string->contents = cl_kind_to_name[arguments[0]->kind];
+	return kind_string;
+}
+
 ClObj* cl_builtin_upto(ClFunction* this_function, int argument_count, ClObj** arguments) {
 	ASSERT_ARGUMENT_COUNT(1)
 	ClDataContext* data_ctx = this_function->parent;
@@ -463,7 +572,24 @@ ClObj* cl_builtin_upto(ClFunction* this_function, int argument_count, ClObj** ar
 	return result;
 }
 
+ClObj* cl_builtin_upto_iterator(ClFunction* this_function, int argument_count, ClObj** arguments);
+
 ClObj* cl_builtin_upto_base_iter(ClFunction* this_function, int argument_count, ClObj** arguments) {
+	ASSERT_ARGUMENT_COUNT(0)
+	static const string* staticstring_uptoiterator = new string("uptoiterator");
+	ClFunction* f = this_function->parent->create_function(
+		0,
+		false,
+		staticstring_uptoiterator,
+		nullptr
+	);
+	f->native_executable_content = cl_builtin_upto_iterator;
+	f->closed_this = this_function->closed_this;
+	f->closed_this->inc_ref();
+	return f;
+}
+
+ClObj* cl_builtin_upto_iterator(ClFunction* this_function, int argument_count, ClObj** arguments) {
 	ASSERT_ARGUMENT_COUNT(0)
 	ClDataContext* data_ctx = this_function->parent;
 	ClInstance& this_instance = *assert_kind<ClInstance>(this_function->closed_this);

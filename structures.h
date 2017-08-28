@@ -144,8 +144,22 @@ struct ClFunction : public ClObj {
 	const std::string* function_name;
 	const std::string* source_file_path;
 
+	template <typename T>
+	inline T& cache_as() {
+		return *reinterpret_cast<T*>(&native_executable_cache);
+	}
+
 	virtual ~ClFunction();
-	ClFunction() : ClObj(CL_FUNCTION) {}
+	ClFunction(
+		int argument_count,
+		bool is_method,
+		const std::string* function_name,
+		const std::string* source_file_path
+	) : ClObj(CL_FUNCTION),
+	    argument_count(argument_count),
+	    is_method(is_method),
+	    function_name(function_name),
+	    source_file_path(source_file_path) {}
 	virtual void pprint(std::ostream& os) const;
 	ClFunction* produce_bound_method(ClObj* object_who_has_method);
 };
@@ -195,6 +209,8 @@ struct ClDataContext {
 	const std::string* register_permanent_string(std::string s);
 
 	template <typename T> T* create();
+	ClFunction* create_function(int argument_count, bool is_method, const std::string* function_name, const std::string* source_file_path);
+	ClFunction* create_return_thunk(ClObj* to_return, const std::string* function_name, const std::string* source_file_path);
 
 	void traceback_and_crash(std::string message) __attribute__ ((noreturn));
 };
@@ -218,7 +234,10 @@ namespace cl_template_trickery {
 template <typename T>
 static inline T* assert_kind(ClObj* obj) {
 	if (obj == nullptr) {
-//		cl_crash("nullptr in assert_kind!");
+		cl_crash("nullptr in assert_kind!");
+	}
+	if (obj->ref_count <= 0) {
+		cl_crash("Non-positive ref count on used object!");
 	}
 	if (obj->kind != cl_template_trickery::get_kind<T>::kind) {
 		std::string error_message = "Type error, expected a ";
@@ -236,6 +255,8 @@ T* ClDataContext::create() {
 	register_object(obj);
 	return obj;
 }
+
+ClObj* cl_return_thunk_executable_content(ClFunction* this_function, int argument_count, ClObj** arguments);
 
 #endif
 

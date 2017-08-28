@@ -1,6 +1,6 @@
 // Some crappy language.
 
-//#define DEBUG_OUTPUT
+#define DEBUG_OUTPUT
 
 #include <unordered_set>
 #include <iterator>
@@ -14,6 +14,8 @@
 extern "C" {
 #include <unistd.h>
 #include <dlfcn.h>
+#include <execinfo.h>
+#include <signal.h>
 }
 
 using namespace std;
@@ -196,6 +198,11 @@ ostream& operator << (ostream& os, const ClInstructionSequence& seq) {
 
 void cl_crash(string message) {
 	cerr << "Error: " << message << endl;
+//	void* backtrace_array[256];
+//	size_t size = backtrace(backtrace_array, sizeof(backtrace_array) / sizeof(backtrace_array[0]));
+//	backtrace_symbols_fd(backtrace_array, size, STDERR_FILENO);
+	cerr << "Sending signal to self to allow debugging." << endl;
+	raise(SIGUSR1);
 	exit(1);
 } 
 
@@ -204,20 +211,22 @@ ClContext::ClContext() {
 	ClFunction* f;
 
 #define MAKE_METHOD(kind, name, function_argument_count, function) \
-	f = data_ctx->create<ClFunction>(); \
-	f->argument_count = function_argument_count; \
-	f->function_name = data_ctx->register_permanent_string(name); \
-	f->source_file_path = nullptr; \
-	f->is_method = true; \
+	f = data_ctx->create_function( \
+		function_argument_count, \
+		true, \
+		data_ctx->register_permanent_string(name), \
+		nullptr \
+	); \
 	f->native_executable_content = function; \
 	data_ctx->default_type_tables[kind][name] = f;
 
 #define MAKE_MEMBER_FUNCTION(instance, name, function_argument_count, function, should_be_a_method) \
-	f = data_ctx->create<ClFunction>(); \
-	f->argument_count = function_argument_count; \
-	f->function_name = data_ctx->register_permanent_string(name); \
-	f->source_file_path = nullptr; \
-	f->is_method = should_be_a_method; \
+	f = data_ctx->create_function( \
+		function_argument_count, \
+		should_be_a_method, \
+		data_ctx->register_permanent_string(name), \
+		nullptr \
+	); \
 	f->native_executable_content = function; \
 	instance->table[name] = f;
 
@@ -256,6 +265,8 @@ ClContext::ClContext() {
 	// Populate the global scope with builtin functions.
 	MAKE_GLOBAL("len", 1, cl_builtin_len)
 	MAKE_GLOBAL("methodify", 1, cl_builtin_methodify)
+	MAKE_GLOBAL("getparent", 1, cl_builtin_getparent)
+	MAKE_GLOBAL("getkind", 1, cl_builtin_getkind)
 
 	// Upto is a complicated construction.
 	// Its "closed_this" points to an instance, which it returns children of.
@@ -314,6 +325,7 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 		cout << endl;
 
 		size_t starting_stack_size = stack.size();
+//		getchar();
 #endif
 
 		switch (instruction.opcode) {
@@ -394,13 +406,14 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 				break;
 			}
 			case OPCODE_INDEX("MAKE_FUNCTION"): {
-				auto obj = data_ctx->create<ClFunction>();
-
 				// To make a function we produce a new record for its scope.
 				ClMakeFunctionDescriptor& desc = instruction.make_function_descriptor;
-				obj->argument_count = desc.function_argument_count;
-				obj->function_name = &desc.function_name;
-				obj->source_file_path = &desc.source_file_path;
+				auto obj = data_ctx->create_function(
+					desc.function_argument_count,
+					false,
+					&desc.function_name,
+					&desc.source_file_path
+				);
 				ClRecord* func_scope = new ClRecord(0, desc.subscope_length, data_ctx->nil);
 				data_ctx->register_object(func_scope);
 				// We then copy into the scope as per our closure descriptor.
@@ -461,18 +474,22 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 				if (stack.size() == 0)
 					cl_crash("Stack underflow on iterate.");
 				ClObj* iterator = stack.back();
+//				cout << "About to call." << endl;
 				// The nil inc_ref/dec_ref pair here is probably not necessary, but makes us strictly follow our protocol.
 				data_ctx->nil->inc_ref();
 				ClObj* return_value = cl_perform_function_call(this, iterator, 0, nullptr);
 				data_ctx->nil->dec_ref();
+//				cout << "Got return value: " << return_value->_vptr << endl;
 				// If the value is a ClStopIteration, then jump to the target.
 				if (return_value->kind == CL_STOP_ITERATION) {
+//					cout << "Stop iteration!" << endl;
 					instruction_pointer = instruction.args[0];
 					return_value->dec_ref();
 				} else {
 					// Otherwise, push the iteration value onto the stack.
 					stack.push_back(return_value);
 				}
+//				cout << "About to be done." << endl;
 				break;
 			}
 			case OPCODE_INDEX("STOP_ITERATION"): {
@@ -736,6 +753,8 @@ void ClContext::load_from_shared_object(string path, ClInstance* load_into_here)
 				new_object_that_needs_dec_ref = true;
 				break;
 			}
+			// XXX: TODO: Handle CL_FUNCTION entries appropriately.
+/*
 			case CL_FUNCTION: {
 				ClFunction* _obj = data_ctx->create<ClFunction>();
 				obj = _obj;
@@ -743,6 +762,7 @@ void ClContext::load_from_shared_object(string path, ClInstance* load_into_here)
 				new_object_that_needs_dec_ref = true;
 				break;
 			}
+*/
 			default:
 				cl_crash("Bad kind in cl_module_table in shared object.");
 		}

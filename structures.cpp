@@ -165,19 +165,24 @@ void ClFunction::pprint(ostream& os) const {
 }
 
 ClFunction* ClFunction::produce_bound_method(ClObj* object_who_has_method) {
-	auto bound_method = new ClFunction();
+	auto bound_method = parent->create_function(
+		argument_count,
+		false,
+		function_name,
+		source_file_path
+	);
 	bound_method->executable_content = executable_content;
-	bound_method->argument_count = argument_count;
+//	bound_method->argument_count = argument_count;
 	bound_method->closure = closure;
 	// We set is_method to false, to indicate that further pulling from an object shouldn't produce method binding.
-	bound_method->is_method = false;
+//	bound_method->is_method = false;
 	if (closure != nullptr)
 		closure->inc_ref();
 	bound_method->closed_this = object_who_has_method;
 	bound_method->native_executable_content = native_executable_content;
 	bound_method->native_executable_cache = native_executable_cache;
-	bound_method->function_name = function_name;
-	bound_method->source_file_path = source_file_path;
+//	bound_method->function_name = function_name;
+//	bound_method->source_file_path = source_file_path;
 
 	object_who_has_method->inc_ref();
 	parent->register_object(bound_method);
@@ -299,6 +304,28 @@ void ClDataContext::traceback_and_crash(string message) {
 		if (entry.source_file_path != nullptr and entry.line_number > 0)
 			print_line_from_file(*entry.source_file_path, entry.line_number);
 	}
-	cl_crash(message);
+	cerr << "Error: " << message << endl;
+	exit(1);
+}
+
+ClFunction* ClDataContext::create_function(int argument_count, bool is_method, const std::string* function_name, const std::string* source_file_path) {
+	ClFunction* obj = new ClFunction(argument_count, is_method, function_name, source_file_path);
+	register_object(obj);
+	return obj;
+}
+
+ClFunction* ClDataContext::create_return_thunk(ClObj* to_return, const std::string* function_name, const std::string* source_file_path) {
+	ClFunction* thunk = create_function(0, false, function_name, source_file_path);
+	// Stash the object to return into the function as the closed_this parameter.
+	// I'm not super happy about this, but oh well...
+	thunk->closed_this = to_return;
+	to_return->inc_ref();
+	thunk->native_executable_content = cl_return_thunk_executable_content;
+	return thunk;
+}
+
+ClObj* cl_return_thunk_executable_content(ClFunction* this_function, int argument_count, ClObj** arguments) {
+	this_function->closed_this->inc_ref();
+	return this_function->closed_this;
 }
 

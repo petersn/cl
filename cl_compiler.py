@@ -397,6 +397,7 @@ class ClCompiler:
 
 	def generate_consumer_for_unpack_spec(self, unpack_spec_contents, ctx):
 		ctx.append("DOT_LOAD \"iter\"")
+		ctx.append("CALL 0")
 		# Make a label for unpack too few.
 		too_few_label = self.new_label()
 		# Begin pulling out values, and assigning.
@@ -466,6 +467,7 @@ class ClCompiler:
 			top_label = self.new_label()
 			done_iterating_label = self.new_label()
 			ctx.append("DOT_LOAD \"iter\"")
+			ctx.append("CALL 0")
 			ctx.append("%s:" % top_label)
 			ctx.append("ITERATE %s" % done_iterating_label)
 			# Then assign the yielded value into the iteration variable.
@@ -707,6 +709,7 @@ class ClCompiler:
 				ctx.continue_labels.pop()
 				ctx.break_labels.pop()
 				ctx.append("DOT_LOAD \"iter\"")
+				ctx.append("CALL 0")
 				ctx.append("%s:" % top_label)
 				ctx.append("ITERATE %s" % done_iterating_label)
 				# Then assign the yielded value into the iteration variable.
@@ -789,6 +792,16 @@ def source_to_bytecode(source, source_file_path="<sourceless>"):
 
 if __name__ == "__main__":
 	source = r"""
+
+print [1]*10
+
+END_CL_INPUT
+
+for i <- [1, 2, 3]
+	print i
+end
+
+END_CL_INPUT
 
 def list x
 	return [i | i <- x]
