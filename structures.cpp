@@ -129,15 +129,15 @@ ClRecord* ClRecord::duplicate() const {
 	return dup;
 }
 
-// ===== ClMap =====
+// ===== ClDict =====
 
-ClMap::~ClMap() {
+ClDict::~ClDict() {
 	for (auto& pair : mapping)
 		pair.second->dec_ref();
 }
 
-void ClMap::pprint(ostream& os) const {
-	os << "Map";
+void ClDict::pprint(ostream& os) const {
+	os << "Dict";
 }
 
 // ===== ClString =====

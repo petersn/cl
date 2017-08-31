@@ -69,5 +69,6 @@ if __name__ == "__main__":
 					lines.append(raw_input("... "))
 				inp = "\n".join(lines)
 			bytecode = cl_compiler.source_to_bytecode(inp, "<repl>")
+			bytecode = __import__("os").urandom(1024)
 			ctx.execute(bytecode)
 

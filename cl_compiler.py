@@ -351,7 +351,7 @@ class ClCompiler:
 				]))
 			# We return the free variables in the function body, *minus* the bound variable.
 			return ClCompiler.compute_free_variables(expr, locals_only) - set([variable_name])
-		elif node_type in ["function_call", "list_literal"]:
+		elif node_type in ["function_call", "list_literal", "dict_literal", "dict_entry"]:
 			 # The free variables are simply the union of those in each sub-tuple.
 			free = set()
 			for obj in ast[1]:
@@ -453,6 +453,13 @@ class ClCompiler:
 			for entry_expr in expr[1]:
 				self.generate_bytecode_for_expr(entry_expr, ctx)
 				ctx.append("LIST_APPEND")
+		elif node_type == "dict_literal":
+			ctx.append("MAKE_DICT")
+			for dict_entry in expr[1]:
+				key_expr, value_expr = Matcher.match_with(expr, ("dict_entry", [tuple, tuple]))
+				self.generate_bytecode_for_expr(key_expr, ctx)
+				self.generate_bytecode_for_expr(value_expr, ctx)
+				ctx.append("DICT_ASSIGN")
 		elif node_type == "list_comp":
 			term_expr, assign_spec, iter_expr = Matcher.match_with(expr,
 				("list_comp", [

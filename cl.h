@@ -44,7 +44,7 @@ constexpr ClOpcodeDesc cl_opcode_descs[] = {
 	ClOpcodeDesc({"MAKE_INT",        1,  1, false}),
 	ClOpcodeDesc({"MAKE_LIST",       0,  1, false}),
 	ClOpcodeDesc({"MAKE_RECORD",     2,  1, false}),
-	ClOpcodeDesc({"MAKE_MAP",        0,  1, false}),
+	ClOpcodeDesc({"MAKE_DICT",       0,  1, false}),
 	ClOpcodeDesc({"MAKE_STRING",     0,  1, true }),
 	ClOpcodeDesc({"MAKE_FUNCTION",   0,  1, true }),
 	ClOpcodeDesc({"MAKE_INSTANCE",   0,  1, false}),
@@ -56,6 +56,7 @@ constexpr ClOpcodeDesc cl_opcode_descs[] = {
 	ClOpcodeDesc({"ITERATE",         1,-99, false}),
 	ClOpcodeDesc({"STOP_ITERATION",  0,  0, false}),
 	ClOpcodeDesc({"LIST_APPEND",     0, -1, false}),
+	ClOpcodeDesc({"DICT_ASSIGN",     0, -2, false}),
 	ClOpcodeDesc({"DOT_LOAD",        0,  0, true }),
 	ClOpcodeDesc({"DOT_STORE",       0, -2, true }),
 	// Here GLOBAL_LOAD and GLOBAL_STORE are for efficiency.

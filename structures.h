@@ -21,7 +21,7 @@ enum ClKind {
 	CL_BOOL,
 	CL_LIST,
 	CL_RECORD,
-	CL_MAP,
+	CL_DICT,
 	CL_STRING,
 	CL_FUNCTION,
 	CL_INSTANCE,
@@ -45,7 +45,7 @@ const char* const cl_kind_to_name[CL_KIND_COUNT] = {
 	"Bool",
 	"List",
 	"Record",
-	"Map",
+	"Dict",
 	"String",
 	"Function",
 	"Instance",
@@ -113,11 +113,11 @@ struct ClRecord : public ClObj {
 	ClRecord* duplicate() const;
 };
 
-struct ClMap : public ClObj {
+struct ClDict : public ClObj {
 	std::unordered_map<cl_int_t, ClObj*> mapping;
 
-	ClMap() : ClObj(CL_MAP) {}
-	virtual ~ClMap();
+	ClDict() : ClObj(CL_DICT) {}
+	virtual ~ClDict();
 	virtual void pprint(std::ostream& os) const;
 };
 
@@ -224,7 +224,7 @@ namespace cl_template_trickery {
 	template <> struct get_kind<ClBool>          { constexpr static ClKind kind = CL_BOOL; };
 	template <> struct get_kind<ClList>          { constexpr static ClKind kind = CL_LIST; };
 	template <> struct get_kind<ClRecord>        { constexpr static ClKind kind = CL_RECORD; };
-	template <> struct get_kind<ClMap>           { constexpr static ClKind kind = CL_MAP; };
+	template <> struct get_kind<ClDict>           { constexpr static ClKind kind = CL_DICT; };
 	template <> struct get_kind<ClString>        { constexpr static ClKind kind = CL_STRING; };
 	template <> struct get_kind<ClFunction>      { constexpr static ClKind kind = CL_FUNCTION; };
 	template <> struct get_kind<ClInstance>      { constexpr static ClKind kind = CL_INSTANCE; };

@@ -1,6 +1,6 @@
 // Some crappy language.
 
-#define DEBUG_OUTPUT
+//#define DEBUG_OUTPUT
 
 #include <unordered_set>
 #include <iterator>
@@ -256,7 +256,7 @@ ClContext::ClContext() {
 	SET_TYPE_STRING(CL_BOOL, "bool")
 	SET_TYPE_STRING(CL_LIST, "list")
 	SET_TYPE_STRING(CL_RECORD, "record")
-	SET_TYPE_STRING(CL_MAP, "map")
+	SET_TYPE_STRING(CL_DICT, "dict")
 	SET_TYPE_STRING(CL_STRING, "string")
 	SET_TYPE_STRING(CL_FUNCTION, "function")
 	// This type string should be overridden for each class.
@@ -394,8 +394,8 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 				stack.push_back(obj);
 				break;
 			}
-			case OPCODE_INDEX("MAKE_MAP"): {
-				auto obj = data_ctx->create<ClMap>();
+			case OPCODE_INDEX("MAKE_DICT"): {
+				auto obj = data_ctx->create<ClDict>();
 				stack.push_back(obj);
 				break;
 			}
@@ -508,6 +508,9 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 				ClList* list = static_cast<ClList*>(possibly_list);
 				list->contents.push_back(new_item);
 				// There is no need to adjust reference counts, because new_item was moved off the stack and into a list.
+				break;
+			}
+			case OPCODE_INDEX("DICT_ASSIGN"): {
 				break;
 			}
 			case OPCODE_INDEX("GLOBAL_LOAD"): // Fallthrough!

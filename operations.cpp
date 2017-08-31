@@ -236,7 +236,7 @@ bool cl_coerce_to_boolean(ClObj* obj) {
 		case (CL_LIST):
 			return static_cast<ClList*>(obj)->contents.size() > 0;
 		case (CL_RECORD):
-		case (CL_MAP):
+		case (CL_DICT):
 			return true;
 		case (CL_STRING):
 			return static_cast<ClString*>(obj)->contents.size() > 0;
