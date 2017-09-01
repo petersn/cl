@@ -63,7 +63,6 @@ struct ClObj {
 	ClObj(ClKind kind) : ref_count(1), kind(kind) {}
 
 	virtual ~ClObj();
-	bool test_kind(ClKind kind);
 	virtual void pprint(std::ostream& os) const = 0;
 };
 
@@ -113,12 +112,29 @@ struct ClRecord : public ClObj {
 	ClRecord* duplicate() const;
 };
 
+struct DictHashEntry {
+	ClObj* contents;
+	// This operator is purely for checking dict key equality, not any other kind of equality.
+	// I call this being "keyqual".
+	bool operator == (const DictHashEntry& other) const;
+};
+
+namespace std {
+	template <>
+	struct hash<DictHashEntry> {
+		size_t operator() (const DictHashEntry& entry) const;
+	};
+}
+
 struct ClDict : public ClObj {
-	std::unordered_map<cl_int_t, ClObj*> mapping;
+	std::unordered_map<DictHashEntry, ClObj*> mapping;
 
 	ClDict() : ClObj(CL_DICT) {}
 	virtual ~ClDict();
 	virtual void pprint(std::ostream& os) const;
+
+	ClObj* lookup(ClObj* key);
+	void assign(ClObj* key, ClObj* value);
 };
 
 struct ClString : public ClObj {

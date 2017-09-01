@@ -129,6 +129,12 @@ ClObj* ClContext::binary_index(ClObj* _left, ClObj* _right) {
 		obj->inc_ref();
 	End_Case
 
+	if (_left->kind == CL_DICT) {
+		ClObj* result = static_cast<ClDict*>(_left)->lookup(_right);
+		result->inc_ref();
+		return result;
+	}
+
 	data_ctx->traceback_and_crash("Type error on binary index.");
 }
 
@@ -382,9 +388,9 @@ void cl_store_to_object_table(ClObj* object_to_store_in, ClObj* value_to_store, 
 
 void cl_store_by_index(ClObj* _indexed_obj, ClObj* _index_value, ClObj* stored_obj) {
 	// TODO: Add a slice type, and handle it for index_value.
-	ClInt* index_value = assert_kind<ClInt>(_index_value);
 	switch (_indexed_obj->kind) {
 		case (CL_LIST): {
+			ClInt* index_value = assert_kind<ClInt>(_index_value);
 			ClList* indexed_obj = assert_kind<ClList>(_indexed_obj);
 			cl_int_t index = util_length_wrap(_indexed_obj->parent, index_value->value, indexed_obj->contents.size());
 			// Must in stored_obj ref first, in case we're replacing the object with itself.
@@ -393,11 +399,14 @@ void cl_store_by_index(ClObj* _indexed_obj, ClObj* _index_value, ClObj* stored_o
 			indexed_obj->contents[index] = stored_obj;
 			break;
 		}
+		case (CL_DICT): {
+			assert_kind<ClDict>(_indexed_obj)->assign(_index_value, stored_obj);
+			break;
+		}
 		default:
 			_indexed_obj->parent->traceback_and_crash("Type error on store-by-index.");
 	}
 }
-
 
 // ===== Built-in functions =====
 

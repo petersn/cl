@@ -34,10 +34,6 @@ ClObj::~ClObj() {
 //	cout << "Calling parent!" << endl;
 }
 
-bool ClObj::test_kind(ClKind kind) {
-	return this->kind == kind;
-}
-
 // ===== ClNil =====
 
 void ClNil::pprint(ostream& os) const {
@@ -131,9 +127,64 @@ ClRecord* ClRecord::duplicate() const {
 
 // ===== ClDict =====
 
+bool DictHashEntry::operator == (const DictHashEntry& other) const {
+	// Objects of different kinds are never keyqual.
+	if (contents->kind != other.contents->kind)
+		return false;
+	switch (contents->kind) {
+		case (CL_NIL):
+			return true;
+		case (CL_INT):
+			return static_cast<ClInt*>(contents)->value == static_cast<ClInt*>(other.contents)->value;
+		case (CL_BOOL):
+			return static_cast<ClBool*>(contents)->truth_value == static_cast<ClBool*>(other.contents)->truth_value;
+		case (CL_STRING):
+			return static_cast<ClString*>(contents)->contents == static_cast<ClString*>(other.contents)->contents;
+		// The following types are keyqual when they're isqual.
+		case (CL_LIST):
+		case (CL_RECORD):
+		case (CL_DICT):
+		case (CL_FUNCTION):
+		case (CL_INSTANCE):
+			// XXX: Do I really want to even allow mutable types (list, records, dicts) to be keyqual to others?
+			return contents == other.contents;
+		default:
+			cout << cl_kind_to_name[contents->kind] << endl;
+			cl_crash("BUG BUG BUG: Unhandled case in DictHashEntry::operator ==.");
+	}
+}
+
+size_t std::hash<DictHashEntry>::operator () (const DictHashEntry& entry) const {
+	return 3;
+}
+
 ClDict::~ClDict() {
-	for (auto& pair : mapping)
+	for (auto& pair : mapping) {
+		pair.first.contents->dec_ref();
 		pair.second->dec_ref();
+	}
+}
+
+ClObj* ClDict::lookup(ClObj* key) {
+	DictHashEntry entry({key});
+	auto it = mapping.find(entry);
+	if (it == mapping.end())
+		parent->traceback_and_crash("Key error on dictionary lookup.");
+	return it->second;
+}
+
+void ClDict::assign(ClObj* key, ClObj* value) {
+	DictHashEntry entry({key});
+	// Increment reference counts.
+	key->inc_ref();
+	value->inc_ref();
+	// Check if we're overwriting a previous entry, and if so, decrement ref counts.
+	auto it = mapping.find(entry);
+	if (it != mapping.end()) {
+		it->first.contents->dec_ref();
+		it->second->dec_ref();
+	}
+	mapping[entry] = value;
 }
 
 void ClDict::pprint(ostream& os) const {

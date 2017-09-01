@@ -511,6 +511,16 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 				break;
 			}
 			case OPCODE_INDEX("DICT_ASSIGN"): {
+				ClObj* new_value = pop(stack);
+				ClObj* new_key = pop(stack);
+				if (stack.size() == 0)
+					cl_crash("Stack underflow on primitive dict assign.");
+				ClObj* possibly_dict = stack.back();
+				ClDict* dict = static_cast<ClDict*>(possibly_dict);
+				dict->assign(new_key, new_value);
+				// Decrement references because we popped off the stack.
+				new_value->dec_ref();
+				new_key->dec_ref();
 				break;
 			}
 			case OPCODE_INDEX("GLOBAL_LOAD"): // Fallthrough!
@@ -828,7 +838,7 @@ int main(int argc, char** argv) {
 extern "C" void cl_execute_string(const char* input, int length) {
 	string s(input, length);
 	auto program = ClInstructionSequence::decode_opcodes(s);
-	cout << *program;
+//	cout << *program;
 
 	auto ctx = new ClContext();
 	auto root_scope = new ClRecord(0, 0, ctx->data_ctx->nil);

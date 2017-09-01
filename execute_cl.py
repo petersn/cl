@@ -56,6 +56,7 @@ if __name__ == "__main__":
 		with open(sys.argv[1]) as f:
 			source_code = f.read()
 		bytecode = cl_compiler.source_to_bytecode(source_code, sys.argv[1])
+		print "Total length:", len(bytecode)
 		cl_execute_string(bytecode)
 	else:
 		print "Cl REPL v(no version number yet)"
@@ -69,6 +70,5 @@ if __name__ == "__main__":
 					lines.append(raw_input("... "))
 				inp = "\n".join(lines)
 			bytecode = cl_compiler.source_to_bytecode(inp, "<repl>")
-			bytecode = __import__("os").urandom(1024)
 			ctx.execute(bytecode)
 
