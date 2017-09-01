@@ -456,7 +456,7 @@ class ClCompiler:
 		elif node_type == "dict_literal":
 			ctx.append("MAKE_DICT")
 			for dict_entry in expr[1]:
-				key_expr, value_expr = Matcher.match_with(expr, ("dict_entry", [tuple, tuple]))
+				key_expr, value_expr = Matcher.match_with(dict_entry, ("dict_entry", [tuple, tuple]))
 				self.generate_bytecode_for_expr(key_expr, ctx)
 				self.generate_bytecode_for_expr(value_expr, ctx)
 				ctx.append("DICT_ASSIGN")
