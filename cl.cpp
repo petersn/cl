@@ -585,6 +585,13 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 				stack.push_back(to_push);
 				break;
 			}
+			case OPCODE_INDEX("UNARY_NOT"): {
+				ClObj* arg = pop(stack);
+				ClObj* result = unary_not(arg);
+				arg->dec_ref();
+				stack.push_back(result);
+				break;
+			}
 			case OPCODE_INDEX("UNARY_MINUS"): {
 				ClObj* arg = pop(stack);
 				ClObj* result = unary_minus(arg);
@@ -622,7 +629,7 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 				ClObj* index_value = pop(stack);
 				ClObj* indexed_obj = pop(stack);
 				ClObj* stored_obj = pop(stack);
-				cl_store_by_index(indexed_obj, index_value, stored_obj);
+				cl_store_by_index(this, indexed_obj, index_value, stored_obj);
 				index_value->dec_ref();
 				indexed_obj->dec_ref();
 				stored_obj->dec_ref();

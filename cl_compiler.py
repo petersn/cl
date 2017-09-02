@@ -358,6 +358,13 @@ class ClCompiler:
 				if isinstance(obj, tuple):
 					free |= ClCompiler.compute_free_variables(obj, locals_only)
 			return free
+		elif node_type == "unary":
+			operation_class, operation, expr = Matcher.match_with(ast,
+				("unary", [
+					(str, str),
+					tuple,
+				]))
+			return ClCompiler.compute_free_variables(expr, locals_only)
 		elif node_type == "binary":
 			expr1, operation_class, operation, expr2 = Matcher.match_with(ast,
 				("binary", [
@@ -443,7 +450,7 @@ class ClCompiler:
 				ctx.append("MAKE_INT %i" % int(literal_value))
 			elif literal_class == "string":
 				string_spec = ClCompiler.decode_string_constant(literal_value).encode("hex")
-				ctx.append("MAKE_STRING %s" % string_spec)
+				ctx.append("MAKE_STRING x%s" % string_spec)
 			elif literal_class == "identifier":
 				ctx.load(literal_value)
 			else:
@@ -543,6 +550,7 @@ class ClCompiler:
 			self.generate_bytecode_for_expr(expr, ctx)
 			mapping = {
 				"-": "UNARY_MINUS",
+				"not": "UNARY_NOT",
 			}
 			if operation not in mapping:
 				raise ValueError("Unhandled unary operation type: %r" % (operation,))
@@ -572,24 +580,24 @@ class ClCompiler:
 		# The full inner variable table is just all the free variables used inside.
 		argument_count = len(argument_names)
 		body_free   = ClCompiler.compute_free_variables(function_body_block, locals_only=False)
-		print "========== Computing body locals ========="
+#		print "========== Computing body locals ========="
 		body_locals = ClCompiler.compute_free_variables(function_body_block, locals_only=True)
 		# Map the function argument to be the first entry in the variable table.
 
-		print "Body free:  ", body_free
-		print "Body locals:", body_locals
+#		print "Body free:  ", body_free
+#		print "Body locals:", body_locals
 
 		# We close precisely when the variable in question is referenced, but not
 		# assigned in the function, and we have the variable in our variable table.
 		closure_vars = body_free - body_locals - set(argument_names)
-		print "Closure candidates:", closure_vars
-		print "Variable table:", ctx.variable_table
+#		print "Closure candidates:", closure_vars
+#		print "Variable table:", ctx.variable_table
 		closure_vars &= set(ctx.variable_table)
 		inner_variable_table = list((body_locals | closure_vars) - set(argument_names))
 		inner_variable_table = argument_names + inner_variable_table
-		print "Final closure:", closure_vars
-		print "Inner table:", inner_variable_table
-		print
+#		print "Final closure:", closure_vars
+#		print "Inner table:", inner_variable_table
+#		print
 
 		transfer_records = [
 			(ctx.variable_table.index(var), inner_variable_table.index(var))
@@ -680,7 +688,7 @@ class ClCompiler:
 					ctx.append("JUMP %s" % syntax_elem.completely_done_label)
 				else:
 					ctx.append("%s:" % syntax_elem.completely_done_label)
-					print "No child!"
+#					print "No child!"
 				# If we have no such trailer, then simply output our bottom label.
 				ctx.append("%s:" % syntax_elem.bottom_label)
 			elif syntax_elem.kind in ["else_block", "elif_block"]:
@@ -791,8 +799,8 @@ def source_to_bytecode(source, source_file_path="<sourceless>"):
 	ast = parser.parse(source)
 	ast[0].pprint()
 	bytecode_text = compiler.generate_overall_bytecode(ast)
-#	print "Bytecode text:"
-#	print bytecode_text
+	print "Bytecode text:"
+	print bytecode_text
 	assembly_unit = assemble.make_assembly_unit(bytecode_text)
 	bytecode = assemble.assemble(assembly_unit, source_file_path)
 	return bytecode

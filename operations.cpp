@@ -12,9 +12,22 @@
 		return obj; \
 	}
 
+#define End_Case_No_Return \
+	}
+
 #define Give(type) \
 	auto obj = new type(); \
 	data_ctx->register_object(obj);
+
+#define Double_Dispatch(operator_name) \
+	{ \
+		ClObj* dd_result = nullptr; \
+		if (double_dispatch(this, \
+			"__" operator_name "__", \
+			"__r" operator_name "__", \
+			dd_result, _left, _right)) \
+			return dd_result; \
+	}
 
 static inline cl_int_t util_length_wrap(ClDataContext* data_ctx, cl_int_t index, cl_int_t length) {
 	if (index < 0)
@@ -22,6 +35,32 @@ static inline cl_int_t util_length_wrap(ClDataContext* data_ctx, cl_int_t index,
 	if (index >= length)
 		data_ctx->traceback_and_crash("Index out of range.");
 	return index;
+}
+
+static bool double_dispatch(ClContext* ctx, string method_name, string r_method_name, ClObj*& result, ClObj* left, ClObj* right) {
+	ClObj* callable;
+	ClObj* other;
+	// First try to dispatch on the left.
+	if (left->kind == CL_INSTANCE) {
+		callable = cl_lookup_in_object_table(left, method_name, true);
+		other = right;
+	} else if (right->kind == CL_INSTANCE) {
+		callable = cl_lookup_in_object_table(right, r_method_name, true);
+		other = left;
+	} else {
+		// Couldn't double dispatch.
+		return false;
+	}
+	result = cl_perform_function_call(ctx, callable, 1, &other);
+	callable->dec_ref();
+	return true;
+}
+
+ClObj* ClContext::unary_not(ClObj* _arg) {
+	bool truth_value = not cl_coerce_to_boolean(_arg);
+	ClObj* obj = data_ctx->static_booleans[truth_value];
+	obj->inc_ref();
+	return obj;
 }
 
 ClObj* ClContext::unary_minus(ClObj* _arg) {
@@ -51,6 +90,8 @@ ClObj* ClContext::binary_plus(ClObj* _left, ClObj* _right) {
 			p->inc_ref();
 	End_Case
 
+	Double_Dispatch("plus")
+
 	data_ctx->traceback_and_crash("Type error on binary plus.");
 }
 
@@ -59,6 +100,8 @@ ClObj* ClContext::binary_minus(ClObj* _left, ClObj* _right) {
 		Give(ClInt)
 		obj->value = left->value - right->value;
 	End_Case
+
+	Double_Dispatch("minus")
 
 	data_ctx->traceback_and_crash("Type error on binary minus.");
 }
@@ -92,6 +135,8 @@ ClObj* ClContext::binary_times(ClObj* _left, ClObj* _right) {
 		return binary_times(_right, _left);
 	}
 
+	Double_Dispatch("times")
+
 	data_ctx->traceback_and_crash("Type error on binary times.");
 }
 
@@ -100,6 +145,8 @@ ClObj* ClContext::binary_divide(ClObj* _left, ClObj* _right) {
 		Give(ClInt)
 		obj->value = left->value / right->value;
 	End_Case
+
+	Double_Dispatch("divide")
 
 	data_ctx->traceback_and_crash("Type error on binary divide.");
 }
@@ -112,6 +159,8 @@ ClObj* ClContext::binary_modulo(ClObj* _left, ClObj* _right) {
 		if (obj->value < 0)
 			obj->value += right->value;
 	End_Case
+
+	Double_Dispatch("modulo")
 
 	data_ctx->traceback_and_crash("Type error on binary modulo.");
 }
@@ -135,12 +184,41 @@ ClObj* ClContext::binary_index(ClObj* _left, ClObj* _right) {
 		return result;
 	}
 
+	// Attempt double dispatch.
+	Double_Dispatch("index")
+
 	data_ctx->traceback_and_crash("Type error on binary index.");
 }
 
-ClObj* ClContext::binary_in(ClObj* _left, ClObj* _right) {
+bool ClContext::raw_binary_in(ClObj* _left, ClObj* _right) {
+	if (_right->kind == CL_LIST) {
+		for (ClObj* elem : assert_kind<ClList>(_right)->contents) {
+			if (raw_binary_compare(_left, elem, CL_COMP_EQ))
+				return true;
+		}
+		return false;
+	}
+
+	if (_right->kind == CL_DICT) {
+		DictHashEntry entry({_left});
+		const auto& mapping = assert_kind<ClDict>(_right)->mapping;
+		return mapping.find(entry) != mapping.end();
+	}
+
+	Double_Dispatch("in")
+
+	// TODO: Add dispatch by iterating over the right argument.
+
 	data_ctx->traceback_and_crash("Type error on binary in.");
 }
+
+ClObj* ClContext::binary_in(ClObj* _left, ClObj* _right) {
+	bool truth_value = raw_binary_in(_left, _right);
+	ClObj* obj = data_ctx->static_booleans[truth_value];
+	obj->inc_ref();
+	return obj;
+}
+
 
 // Maps a comparison result (from, e.g., memcmp) and a comparison type to an actual resulting truth value.
 static bool comparison_to_truth_value(int comparison, ClComparisonType comparison_type) {
@@ -155,17 +233,13 @@ static bool comparison_to_truth_value(int comparison, ClComparisonType compariso
 	}
 }
 
-ClObj* ClContext::binary_compare(ClObj* _left, ClObj* _right, ClComparisonType comparison_type) {
+bool ClContext::raw_binary_compare(ClObj* _left, ClObj* _right, ClComparisonType comparison_type) {
 	Type_Case(ClInt, ClInt)
 		int comparison_result =
 			left->value == right->value ? 0 :
 			(left->value < right->value ? -1 : 1);
-		// Grab the appropriate statically allocated boolean object.
-		bool truth_value = comparison_to_truth_value(comparison_result, comparison_type);
-		ClObj* obj = data_ctx->static_booleans[truth_value];
-		obj->inc_ref();
-		return obj;
-	End_Case
+		return comparison_to_truth_value(comparison_result, comparison_type);
+	End_Case_No_Return
 
 	// XXX: TODO:
 	// Implement appropriation comparisons here for the built in types, and delegate to a method for instances.
@@ -187,11 +261,8 @@ ClObj* ClContext::binary_compare(ClObj* _left, ClObj* _right, ClComparisonType c
 				comparison_result = 1;
 		}
 		// Finally, interpret this comparison_result subject to the requested comparison.
-		bool truth_value = comparison_to_truth_value(comparison_result, comparison_type);
-		ClObj* obj = data_ctx->static_booleans[truth_value];
-		obj->inc_ref();
-		return obj;
-	End_Case
+		return comparison_to_truth_value(comparison_result, comparison_type);
+	End_Case_No_Return
 
 /*
 	Type_Case(ClList, ClList)
@@ -221,12 +292,20 @@ ClObj* ClContext::binary_compare(ClObj* _left, ClObj* _right, ClComparisonType c
 		// If we are testing inequality, invert the result.
 		if (comparison_type == CL_COMP_NOT_EQ)
 			truth_value = not truth_value;
-		ClObj* obj = data_ctx->static_booleans[truth_value];
-		obj->inc_ref();
-		return obj;
+		return truth_value;
+//		ClObj* obj = data_ctx->static_booleans[truth_value];
+//		obj->inc_ref();
+//		return obj;
 	}
 
 	data_ctx->traceback_and_crash("Type error on binary compare.");
+}
+
+ClObj* ClContext::binary_compare(ClObj* _left, ClObj* _right, ClComparisonType comparison_type) {
+	bool truth_value = raw_binary_compare(_left, _right, comparison_type);
+	ClObj* obj = data_ctx->static_booleans[truth_value];
+	obj->inc_ref();
+	return obj;
 }
 
 // ===== Major helpers =====
@@ -386,12 +465,12 @@ void cl_store_to_object_table(ClObj* object_to_store_in, ClObj* value_to_store, 
 	value_to_store->inc_ref();
 }
 
-void cl_store_by_index(ClObj* _indexed_obj, ClObj* _index_value, ClObj* stored_obj) {
+void cl_store_by_index(ClContext* ctx, ClObj* _indexed_obj, ClObj* _index_value, ClObj* stored_obj) {
 	// TODO: Add a slice type, and handle it for index_value.
 	switch (_indexed_obj->kind) {
 		case (CL_LIST): {
-			ClInt* index_value = assert_kind<ClInt>(_index_value);
 			ClList* indexed_obj = assert_kind<ClList>(_indexed_obj);
+			ClInt* index_value = assert_kind<ClInt>(_index_value);
 			cl_int_t index = util_length_wrap(_indexed_obj->parent, index_value->value, indexed_obj->contents.size());
 			// Must in stored_obj ref first, in case we're replacing the object with itself.
 			stored_obj->inc_ref();
@@ -401,6 +480,14 @@ void cl_store_by_index(ClObj* _indexed_obj, ClObj* _index_value, ClObj* stored_o
 		}
 		case (CL_DICT): {
 			assert_kind<ClDict>(_indexed_obj)->assign(_index_value, stored_obj);
+			break;
+		}
+		case (CL_INSTANCE): {
+			ClObj* callable = cl_lookup_in_object_table(_indexed_obj, "__set_index__", true);
+			ClObj* args[2] = {_index_value, stored_obj};
+			ClObj* ignored = cl_perform_function_call(ctx, callable, 2, args);
+			callable->dec_ref();
+			ignored->dec_ref();
 			break;
 		}
 		default:
@@ -515,6 +602,29 @@ ClObj* cl_builtin_list_iterator(ClFunction* this_function, int argument_count, C
 	return obj;
 }
 
+#if 0
+ClObj* cl_builtin_dict_iter(ClFunction* this_function, int argument_count, ClObj** arguments) {
+	ASSERT_ARGUMENT_COUNT(0)
+	static const string* staticstring_dictiterator = new string("dictiterator");
+	ClFunction* f = this_function->parent->create_function(
+		0,
+		false,
+		staticstring_dictiterator,
+		nullptr
+	);
+	f->native_executable_content = cl_builtin_dict_iterator;
+	f->closed_this = this_function->closed_this;
+	f->closed_this->inc_ref();
+	f->cache_as<uint64_t>() = 0;
+	return f;
+}
+
+ClObj* cl_builtin_dict_iterator(ClFunction* this_function, int argument_count, ClObj** arguments) {
+	ASSERT_ARGUMENT_COUNT(0)
+	ClDict* this_dict = assert_kind<ClDict>(this_function->closed_this);
+}
+#endif
+
 ClObj* cl_builtin_len(ClFunction* this_function, int argument_count, ClObj** arguments) {
 	ASSERT_ARGUMENT_COUNT(1)
 	ClObj* argument = arguments[0];
@@ -529,8 +639,12 @@ ClObj* cl_builtin_len(ClFunction* this_function, int argument_count, ClObj** arg
 			value = static_cast<ClString*>(argument)->contents.size();
 			break;
 		}
+		case (CL_INSTANCE): {
+			data_ctx->traceback_and_crash("Currently __len__ dispatch is unimplemented.");
+			break;
+		}
 		default:
-			this_function->parent->traceback_and_crash("Type error on len.");
+			data_ctx->traceback_and_crash("Type error on len.");
 			return nullptr; // Suppress compiler warning about no-return.
 	}
 	ClInt* result = data_ctx->create<ClInt>();

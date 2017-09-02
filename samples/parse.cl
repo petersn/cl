@@ -1,9 +1,17 @@
 # Generic CFG parser implemented in Cl.
 
+def enumerate iterable
+	l = []; i = 0
+	for x <- iterable
+		l.append([i, x])
+		i = i + 1
+	end
+	return l
+end
+
 def all iterable
 	for i <- iterable
-		if i
-		else
+		if not i
 			return False
 		end
 	end
@@ -20,8 +28,7 @@ def any iterable
 end
 
 def assert x
-	if x
-	else
+	if not x
 		traceback("Assert failure.")
 	end
 end
@@ -33,11 +40,65 @@ def isinstance a b
 	return getparent(a) == b
 end
 
-class DefaultDict
-	def construct factory
-		
+class Slice
+	def construct start stop
+		@.start, @.stop = [start, stop]
+	end
+
+	def __rindex__ other
+		l = []
+		for i <- upto(@.stop - @.start)
+			l.append(other[@.start + i])
+		end
+		return l
 	end
 end
+
+def join sep l
+	out = ""
+	for i, s <- enumerate(l)
+		out = out + s
+		if i != len(l) - 1
+			out = out + sep
+		end
+	end
+	return out
+end
+
+l = [x.str() | x <- [1, 2, 3, 4, 5]]
+print l
+print join(", ", l)
+
+l = [1,2,3,4,5]
+#print l[Slice(1, 2)]
+
+class DefaultDict
+	def construct
+		@.contents = {}
+	end
+
+	def str
+		return "{" + join(", ", [k.str() + ": " + v.str | k, v <- @.contents]) + "}"
+	end
+
+	def __index__ other
+		if not other in @.contents
+			@.contents[other] = []
+		end
+		return @.contents[other]
+	end
+
+	def __set_index__ key value
+		@.contents[key] = value
+	end
+end
+
+d = DefaultDict()
+d["a"] = 1
+print d["b"]
+print d.str()
+
+exit()
 
 class ContextFreeGrammar
 	class Production
@@ -80,12 +141,6 @@ class ContextFreeGrammar
 	def parse non_terminal tokens
 	end
 end
-
-d = {}
-d[1] = 2
-print d[1]
-
-exit()
 
 p = ContextFreeGrammar.Production(1, 2, 3)
 print isinstance(p, ContextFreeGrammar)

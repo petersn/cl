@@ -66,6 +66,7 @@ constexpr ClOpcodeDesc cl_opcode_descs[] = {
 	ClOpcodeDesc({"GET_GLOBAL",      0,  1, false}),
 	ClOpcodeDesc({"SET_GLOBAL",      0, -1, false}),
 	ClOpcodeDesc({"GET_THIS",        0,  1, false}),
+	ClOpcodeDesc({"UNARY_NOT",       0,  0, false}),
 	ClOpcodeDesc({"UNARY_MINUS",     0,  0, false}),
 	ClOpcodeDesc({"BINARY_PLUS",     0, -1, false}),
 	ClOpcodeDesc({"BINARY_MINUS",    0, -1, false}),
@@ -174,6 +175,7 @@ public:
 	void load_from_shared_object(std::string path, ClInstance* load_into_here);
 
 	// Operations.
+	ClObj* unary_not(ClObj* arg);
 	ClObj* unary_minus(ClObj* arg);
 	ClObj* binary_plus(ClObj* left, ClObj* right);
 	ClObj* binary_minus(ClObj* left, ClObj* right);
@@ -181,15 +183,18 @@ public:
 	ClObj* binary_divide(ClObj* left, ClObj* right);
 	ClObj* binary_modulo(ClObj* left, ClObj* right);
 	ClObj* binary_index(ClObj* left, ClObj* right);
+	bool raw_binary_in(ClObj* left, ClObj* right);
 	ClObj* binary_in(ClObj* left, ClObj* right);
+	bool raw_binary_compare(ClObj* left, ClObj* right, ClComparisonType comparison_type);
 	ClObj* binary_compare(ClObj* left, ClObj* right, ClComparisonType comparison_type);
+
 };
 
 bool cl_coerce_to_boolean(ClObj* obj);
 ClObj* cl_perform_function_call(ClContext* ctx, ClObj* supposed_function, int argument_count, ClObj** arguments);
 ClObj* cl_lookup_in_object_table(ClObj* object, const std::string& name, bool bind_methods);
 void cl_store_to_object_table(ClObj* object_to_store_in, ClObj* value_to_store, const std::string& name);
-void cl_store_by_index(ClObj* indexed_obj, ClObj* index_value, ClObj* stored_obj);
+void cl_store_by_index(ClContext* ctx, ClObj* indexed_obj, ClObj* index_value, ClObj* stored_obj);
 
 ClObj* cl_builtin_nil_to_string(ClFunction* this_function, int argument_count, ClObj** arguments);
 ClObj* cl_builtin_int_to_string(ClFunction* this_function, int argument_count, ClObj** arguments);

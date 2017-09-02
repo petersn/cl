@@ -89,8 +89,10 @@ def make_assembly_unit(s):
 				# If in quotes, the field is a literal, otherwise it's a hex encoding.
 				if data_field.startswith('"') and data_field.endswith('"'):
 					data_field = data_field[1:-1]
+				elif data_field.startswith("x"):
+					data_field = data_field[1:].decode("hex")
 				else:
-					data_field = data_field.decode("hex")
+					raise Exception("Unknown data field syntax: %r" % (data_field,))
 
 			stack[-1].ast.append({"name": opcode_name, "args": args, "data_field": data_field})
 		else:
