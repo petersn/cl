@@ -10,6 +10,7 @@
 #include <sstream>
 #include <fstream>
 #include "cl.h"
+#include "cl_builtins.h"
 
 extern "C" {
 #include <unistd.h>
@@ -239,7 +240,7 @@ ClContext::ClContext() {
 	data_ctx->default_type_tables[kind]["type"] = s;
 
 	// Populate the methods for the basic types.
-	MAKE_METHOD(CL_NIL, "str", 0, cl_builtin_nil_to_string)
+//	MAKE_METHOD(CL_NIL, "str", 0, cl_builtin_nil_to_string)
 	MAKE_METHOD(CL_INT, "str", 0, cl_builtin_int_to_string)
 	MAKE_METHOD(CL_BOOL, "str", 0, cl_builtin_bool_to_string)
 	MAKE_METHOD(CL_LIST, "str", 0, cl_builtin_list_to_string)
@@ -278,9 +279,12 @@ ClContext::ClContext() {
 	MAKE_MEMBER_FUNCTION(upto_base, "iter", 0, cl_builtin_upto_base_iter, true)
 
 	// Populate the global scope with builtin values.
-	cl_store_to_object_table(data_ctx->global_scope, data_ctx->nil, "nil");
-	cl_store_to_object_table(data_ctx->global_scope, data_ctx->static_booleans[0], "False");
-	cl_store_to_object_table(data_ctx->global_scope, data_ctx->static_booleans[1], "True");
+//	cl_store_to_object_table(data_ctx->global_scope, data_ctx->nil, "nil");
+//	cl_store_to_object_table(data_ctx->global_scope, data_ctx->static_booleans[0], "False");
+//	cl_store_to_object_table(data_ctx->global_scope, data_ctx->static_booleans[1], "True");
+
+	// Perform builtins initialization.
+	build_into_context_from_entries(this, main_entries);
 }
 
 ClContext::~ClContext() {
