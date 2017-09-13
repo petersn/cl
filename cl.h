@@ -75,6 +75,8 @@ constexpr ClOpcodeDesc cl_opcode_descs[] = {
 	ClOpcodeDesc({"BINARY_MODULO",   0, -1, false}),
 	ClOpcodeDesc({"BINARY_INDEX",    0, -1, false}),
 	ClOpcodeDesc({"BINARY_IN",       0, -1, false}),
+	ClOpcodeDesc({"BINARY_AND",      0, -1, false}),
+	ClOpcodeDesc({"BINARY_OR",       0, -1, false}),
 	ClOpcodeDesc({"BINARY_COMPARE",  1, -1, false}),
 	ClOpcodeDesc({"STORE_INDEX",     0, -3, false}),
 	ClOpcodeDesc({"JUMP",            1,  0, false}),
@@ -185,6 +187,8 @@ public:
 	ClObj* binary_index(ClObj* left, ClObj* right);
 	bool raw_binary_in(ClObj* left, ClObj* right);
 	ClObj* binary_in(ClObj* left, ClObj* right);
+	ClObj* binary_and(ClObj* left, ClObj* right);
+	ClObj* binary_or(ClObj* left, ClObj* right);
 	bool raw_binary_compare(ClObj* left, ClObj* right, ClComparisonType comparison_type);
 	ClObj* binary_compare(ClObj* left, ClObj* right, ClComparisonType comparison_type);
 

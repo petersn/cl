@@ -4,7 +4,7 @@ def enumerate iterable
 	l = []; i = 0
 	for x <- iterable
 		l.append([i, x])
-		i = i + 1
+		i += 1
 	end
 	return l
 end
@@ -57,9 +57,9 @@ end
 def join sep l
 	out = ""
 	for i, s <- enumerate(l)
-		out = out + s
+		out += s
 		if i != len(l) - 1
-			out = out + sep
+			out += sep
 		end
 	end
 	return out

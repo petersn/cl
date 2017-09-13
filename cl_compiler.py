@@ -6,6 +6,8 @@ import pprint, collections
 import parse
 import assemble
 
+ASDF = "literal"
+
 class Matcher:
 	class DropAny:
 		pass
@@ -284,8 +286,8 @@ class ClCompiler:
 		to compute_free_variables, we simply define a different function here.
 		"""
 		kind = assign_spec[0]
-		if kind == "variable":
-			variable_name, = Matcher.match_with(assign_spec, ("variable", [("identifier", str)]))
+		if kind == ASDF:
+			variable_name, = Matcher.match_with(assign_spec, (ASDF, [("identifier", str)]))
 			return set([variable_name])
 		elif kind in ["dot_accessor", "indexing"]:
 			return ClCompiler.compute_free_variables(assign_spec, locals_only)
@@ -321,6 +323,15 @@ class ClCompiler:
 					]))
 				return ClCompiler.get_variables_from_assign_spec(assign_spec, locals_only) | \
 				       ClCompiler.compute_free_variables(expr, locals_only)
+			elif node_type == "inplace_assignment":
+				single_spec, operator, expr = Matcher.match_with(ast.ast,
+					("inplace_assignment", [
+						tuple,
+						tuple,
+						tuple,
+					]))
+				return ClCompiler.get_variables_from_assign_spec(single_spec, locals_only) | \
+				       ClCompiler.compute_free_variables(expr, locals_only)
 			elif node_type == "function_definition":
 				ast.finalize()
 				if not locals_only:
@@ -335,7 +346,7 @@ class ClCompiler:
 		# At this point ``ast'' is guaranteed to be a tuple from the raw AST given by our parser.
 		node_type, = Matcher.match_with(ast, (str, Matcher.DropAny()))
 
-		if node_type in ["literal", "variable", "unpack_spec", "list_comp"]:
+		if node_type in ["literal", ASDF, "unpack_spec", "list_comp", "dict_comp"]:
 			return ClCompiler.compute_free_variables(ast[1], locals_only)
 		elif node_type == "identifier":
 			# If we're computing local variables then a simple reference isn't enough -- you have to assign.
@@ -423,7 +434,7 @@ class ClCompiler:
 		target_type, target_contents = Matcher.match_with(assign_spec, (str, list))
 		if target_type == "unpack_spec":
 			self.generate_consumer_for_unpack_spec(target_contents, ctx)
-		elif target_type == "variable":
+		elif target_type == ASDF:
 			variable_name, = Matcher.match_with(target_contents, [("identifier", str)])
 			ctx.store(variable_name)
 		elif target_type == "dot_accessor":
@@ -438,7 +449,7 @@ class ClCompiler:
 			self.generate_bytecode_for_expr(expr2, ctx)
 			ctx.append("STORE_INDEX")
 		else:
-			raise Exception("Unhandled assignment spec type: %r." % (spec_kind,))
+			raise Exception("Unhandled assignment spec type: %r." % (target_type,))
 
 	def generate_bytecode_for_expr(self, expr, ctx):
 		node_type, = Matcher.match_with(expr, (str, Matcher.DropAny()))
@@ -493,6 +504,34 @@ class ClCompiler:
 			ctx.append("JUMP %s" % top_label)
 			ctx.append("%s:" % done_iterating_label)
 			ctx.append("POP")
+		elif node_type == "dict_comp":
+			key_expr, value_expr, assign_spec, iter_expr = Matcher.match_with(expr,
+				("dict_comp", [
+					tuple,
+					tuple,
+					("list_comp_group", [
+						tuple,
+						tuple,
+					]),
+				]))
+			ctx.append("MAKE_DICT")
+			self.generate_bytecode_for_expr(iter_expr, ctx)
+			top_label = self.new_label()
+			done_iterating_label = self.new_label()
+			ctx.append("DOT_LOAD \"iter\"")
+			ctx.append("CALL 0")
+			ctx.append("%s:" % top_label)
+			ctx.append("ITERATE %s" % done_iterating_label)
+			# Then assign the yielded value into the iteration variable.
+			self.generate_consumer_for_assign_spec(assign_spec, ctx)
+			ctx.append("SWAP")
+			self.generate_bytecode_for_expr(key_expr, ctx)
+			self.generate_bytecode_for_expr(value_expr, ctx)
+			ctx.append("DICT_ASSIGN")
+			ctx.append("SWAP")
+			ctx.append("JUMP %s" % top_label)
+			ctx.append("%s:" % done_iterating_label)
+			ctx.append("POP")
 		elif node_type == "function_call":
 			# Here we extract all the expressions that constitute the function call.
 
@@ -531,6 +570,8 @@ class ClCompiler:
 				"/": "BINARY_DIVIDE",
 				"%": "BINARY_MODULO",
 				"in": "BINARY_IN",
+				"and": "BINARY_AND",
+				"or": "BINARY_OR",
 				"==": "BINARY_COMPARE 0",
 				"!=": "BINARY_COMPARE 1",
 				"<": "BINARY_COMPARE 2",
@@ -655,6 +696,22 @@ class ClCompiler:
 				self.generate_bytecode_for_expr(expr, ctx)
 				# We now compute the assignment target parameters.
 				self.generate_consumer_for_assign_spec(assign_spec, ctx)
+			elif syntax_elem.kind == "inplace_assignment":
+				single_spec, operator, expr = Matcher.match_with(syntax_elem.ast,
+					("inplace_assignment", [
+						tuple,
+						tuple,
+						tuple,
+					]))
+				print "GOT:"
+				print single_spec
+				print operator
+				print expr
+				self.generate_bytecode_for_expr(
+					("binary", [single_spec, operator, expr]),
+					ctx,
+				)
+				self.generate_consumer_for_assign_spec(single_spec, ctx)
 #			elif syntax_elem.kind == "unpack_assignment":
 #				unpack_spec, expr = Matcher.match_with(syntax_elem.ast,
 #					("unpack_assignment", [

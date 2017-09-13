@@ -219,6 +219,19 @@ ClObj* ClContext::binary_in(ClObj* _left, ClObj* _right) {
 	return obj;
 }
 
+ClObj* ClContext::binary_and(ClObj* _left, ClObj* _right) {
+	bool truth_value = cl_coerce_to_boolean(_left) and cl_coerce_to_boolean(_right);
+	ClObj* obj = data_ctx->static_booleans[truth_value];
+	obj->inc_ref();
+	return obj;
+}
+
+ClObj* ClContext::binary_or(ClObj* _left, ClObj* _right) {
+	bool truth_value = cl_coerce_to_boolean(_left) or cl_coerce_to_boolean(_right);
+	ClObj* obj = data_ctx->static_booleans[truth_value];
+	obj->inc_ref();
+	return obj;
+}
 
 // Maps a comparison result (from, e.g., memcmp) and a comparison type to an actual resulting truth value.
 static bool comparison_to_truth_value(int comparison, ClComparisonType comparison_type) {

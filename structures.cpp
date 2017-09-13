@@ -1,8 +1,22 @@
 // Data structures.
 
 #include "structures.h"
+#include <cassert>
 #include <fstream>
 using namespace std;
+
+static unordered_map<string, ClKind> cl_initialization_create_cl_name_to_kind() {
+	unordered_map<string, ClKind> m;
+	for (int k = 0; k < CL_KIND_COUNT; k++) {
+		m[cl_kind_to_name[k]] = static_cast<ClKind>(k);
+	}
+	return m;
+}
+
+// Due to the separation of static initialization and dynamic initialization,
+// it is safe that we call a function here that depends on cl_kind_to_name being initialized.
+// See C++11 3.6.2.
+unordered_map<string, ClKind> cl_name_to_kind = cl_initialization_create_cl_name_to_kind();
 
 std::ostream& operator << (std::ostream& os, const ClObj& obj) {
 	obj.pprint(os);
@@ -378,5 +392,15 @@ ClFunction* ClDataContext::create_return_thunk(ClObj* to_return, const std::stri
 ClObj* cl_return_thunk_executable_content(ClFunction* this_function, int argument_count, ClObj** arguments) {
 	this_function->closed_this->inc_ref();
 	return this_function->closed_this;
+}
+
+void ClDataContext::assign_into_default_type_table(ClKind kind, std::string attribute, ClObj* value) {
+	assert(0 <= kind && kind < CL_KIND_COUNT); // Kind out of range!
+	auto& table = default_type_tables[kind];
+	// Block multi-assignment for now!
+	// NB: If I ever want to allow overwriting entries, then I have to do a dec_ref on the old value.
+	assert(table.count(attribute) == 0); // Cannot reassign into default type table!
+	table[attribute] = value;
+	value->inc_ref();
 }
 

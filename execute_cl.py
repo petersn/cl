@@ -57,6 +57,7 @@ if __name__ == "__main__":
 			source_code = f.read()
 		bytecode = cl_compiler.source_to_bytecode(source_code, sys.argv[1])
 		print "Total length:", len(bytecode)
+		with open("/tmp/a", "w") as f: f.write(bytecode)
 		cl_execute_string(bytecode)
 	else:
 		print "Cl REPL v(no version number yet)"

@@ -52,6 +52,8 @@ const char* const cl_kind_to_name[CL_KIND_COUNT] = {
 	"StopIteration",
 };
 
+extern std::unordered_map<std::string, ClKind> cl_name_to_kind;
+
 struct ClObj {
 	ClDataContext* parent;
 	int ref_count;
@@ -65,6 +67,24 @@ struct ClObj {
 	virtual ~ClObj();
 	virtual void pprint(std::ostream& os) const = 0;
 };
+
+#if 0
+// XXX: TODO: See if we can use smart-pointer style tricks to simplify reference counting.
+class ClObj_DeferredDec {
+	ClObj* wrapped_ptr;
+
+	ClObj_DeferredDec(ClObj* ptr) : wrapped_ptr(ptr) {}
+	~ClObj_DeferredDec() { wrapped_ptr->dec_ref(); }
+	ClObj_DeferredDec(const ClObj_DeferredDec&) = delete;
+	ClObj_DeferredDec& operator = (const ClObj_DeferredDec&) = delete;
+	ClObj& operator * () {
+		return *wrapped_ptr;
+	}
+	ClObj* operator -> () {
+		return wrapped_ptr;
+	}
+};
+#endif
 
 std::ostream& operator << (std::ostream& os, const ClObj& obj);
 
@@ -227,6 +247,7 @@ struct ClDataContext {
 	template <typename T> T* create();
 	ClFunction* create_function(int argument_count, bool is_method, const std::string* function_name, const std::string* source_file_path);
 	ClFunction* create_return_thunk(ClObj* to_return, const std::string* function_name, const std::string* source_file_path);
+	void assign_into_default_type_table(ClKind kind, std::string attribute, ClObj* value);
 
 	void traceback_and_crash(std::string message) __attribute__ ((noreturn));
 };
@@ -240,7 +261,7 @@ namespace cl_template_trickery {
 	template <> struct get_kind<ClBool>          { constexpr static ClKind kind = CL_BOOL; };
 	template <> struct get_kind<ClList>          { constexpr static ClKind kind = CL_LIST; };
 	template <> struct get_kind<ClRecord>        { constexpr static ClKind kind = CL_RECORD; };
-	template <> struct get_kind<ClDict>           { constexpr static ClKind kind = CL_DICT; };
+	template <> struct get_kind<ClDict>          { constexpr static ClKind kind = CL_DICT; };
 	template <> struct get_kind<ClString>        { constexpr static ClKind kind = CL_STRING; };
 	template <> struct get_kind<ClFunction>      { constexpr static ClKind kind = CL_FUNCTION; };
 	template <> struct get_kind<ClInstance>      { constexpr static ClKind kind = CL_INSTANCE; };

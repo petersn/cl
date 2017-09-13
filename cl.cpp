@@ -616,6 +616,8 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 			BINARY_OPERATION("BINARY_MODULO", binary_modulo)
 			BINARY_OPERATION("BINARY_INDEX", binary_index)
 			BINARY_OPERATION("BINARY_IN", binary_in)
+			BINARY_OPERATION("BINARY_AND", binary_and)
+			BINARY_OPERATION("BINARY_OR", binary_or)
 			case OPCODE_INDEX("BINARY_COMPARE"): {
 				ClObj* right = pop(stack);
 				ClObj* left = pop(stack);
