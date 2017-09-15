@@ -1,0 +1,35 @@
+[x] Make a REPL!
+[ ] Make ClInstructionSequences be held in a smart pointer, to fix the use-after-free that makes the REPL crash.
+[ ] Add proper printing of all builtin types, and switch print over to using it.
+[ ] Add a print a, b syntax.
+[ ] Get rid of the print keyword, and make it a function!
+	[ ] Stop recapitulating the history of Python.
+[ ] Add optional arguments.
+[ ] Add *args, **kwargs style syntax.
+[ ] Make the REPL not crash on exceptions.
+[ ] Fill in operator implementations.
+	[ ] Make binary_in use iteration on RHS if available.
+[ ] Add an exception system.
+[ ] Add generators.
+[ ] Add with statement.
+[ ] Add user language extension functionality.
+[ ] Add hash-based set type.
+[ ] Add immutable list (tuple) type.
+[ ] Make dictionaries actually do hashing, rather than just always using 3 as the hash.
+[ ] Re-evaluate how classes and inheritance are currently implemented, as currently constructors can't be inherited.
+[ ] Unify the type hierarchy, making primitive types be classes?
+[ ] Add static types.
+[ ] Add dependent types?
+[ ] Add mark and sweep support.
+[ ] Add threads support, using separate data_ctxes for each thread.
+	[ ] Add multi-threaded mark and sweep.
+[ ] Implement self-hosting bytecode compiler.
+[ ] Fix n^2 bytecode parser.
+[ ] Start work on JIT?
+[ ] Maybe allow importing of Python modules?
+[ ] Work on standard library.
+	[ ] ffi
+	[ ] math
+	[ ] string
+	[ ] regex
+[ ] Make the bytecode more compact with variable length integer fields, or possibly just add compression support.
