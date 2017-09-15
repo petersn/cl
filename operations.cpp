@@ -342,6 +342,8 @@ bool cl_coerce_to_boolean(ClObj* obj) {
 			return true;
 		case (CL_INSTANCE):
 			return true;
+		case (CL_MUTATION_LOCK):
+			return true;
 		default:
 			cl_crash("BUG BUG BUG: Unhandled case in cl_coerce_to_boolean.");
 			return false; // Suppress compiler warning.
@@ -356,8 +358,12 @@ ClObj* cl_perform_function_call(ClContext* ctx, ClObj* supposed_function, int ar
 		result->scope_parent = instance_obj;
 		instance_obj->inc_ref();
 		// We now check if the instance has a construct method.
+		// TODO: This logic here means you can't inherit a constructor from a parent, which is sad.
+		//       Someday I should fix this by adding a "cl_check_for_in_object_table".
 		if (instance_obj->table.find("construct") != instance_obj->table.end()) {
-			ClObj* constructor = cl_lookup_in_object_table(instance_obj, "construct", true);
+//			cout << "Calling instance with construct: " << instance_obj << endl;
+			ClObj* constructor = cl_lookup_in_object_table(result, "construct", true);
+//			cout << "Got a construct with closed_this: " << assert_kind<ClFunction>(constructor)->closed_this << endl;
 //			ClFunction* f = assert_kind<ClFunction>(constructor);
 //			cout << f->argument_count << endl;
 //			cout << f->is_method << endl;
@@ -567,6 +573,8 @@ ClObj* cl_builtin_list_to_string(ClFunction* this_function, int argument_count, 
 ClObj* cl_builtin_list_append(ClFunction* this_function, int argument_count, ClObj** arguments) {
 	ASSERT_ARGUMENT_COUNT(1)
 	ClList* this_list = assert_kind<ClList>(this_function->closed_this);
+	if (not this_list->is_mutable())
+		this_function->parent->traceback_and_crash("Attempt to append to immutable list.");
 	this_list->contents.push_back(arguments[0]);
 	// Must double increment reference when returning.
 	// Once because we've stored the object in the list, and once because we're returning it.
@@ -574,69 +582,6 @@ ClObj* cl_builtin_list_append(ClFunction* this_function, int argument_count, ClO
 	arguments[0]->inc_ref();
 	return arguments[0];
 }
-
-ClObj* cl_builtin_list_iter(ClFunction* this_function, int argument_count, ClObj** arguments) {
-	ASSERT_ARGUMENT_COUNT(0)
-//	ClList* this_list = assert_kind<ClList>(this_function->closed_this);
-	// Build the closure.
-	static const string* staticstring_listiterator = new string("listiterator");
-	ClFunction* f = this_function->parent->create_function(
-		0,
-		false,
-		staticstring_listiterator,
-		nullptr
-	);
-	f->native_executable_content = cl_builtin_list_iterator;
-	f->closed_this = this_function->closed_this;
-	f->closed_this->inc_ref();
-	f->cache_as<uint64_t>() = 0;
-	return f;
-}
-
-ClObj* cl_builtin_list_iterator(ClFunction* this_function, int argument_count, ClObj** arguments) {
-	ASSERT_ARGUMENT_COUNT(0)
-//	cout << "List iterator is being called." << endl;
-	ClList* this_list = assert_kind<ClList>(this_function->closed_this);
-	// We interpret the native cache as an int64_t, which we use as an index into the list.
-	uint64_t& iteration_index = *reinterpret_cast<uint64_t*>(&this_function->native_executable_cache);
-
-	// If we're done iterating, then note so.
-	if (iteration_index >= this_list->contents.size()) {
-		ClStopIteration* stop_iteration = this_function->parent->stop_iteration;
-		stop_iteration->inc_ref();
-		return stop_iteration;
-	}
-
-	// Otherwise, return the next value in line.
-	ClObj* obj = this_list->contents[iteration_index++];
-//	cout << "This closed list: " << this_list << " " << this_list->ref_count << endl;
-//	cout << "Returning this guy: " << obj << " " << obj->ref_count << endl;
-	obj->inc_ref();
-	return obj;
-}
-
-#if 0
-ClObj* cl_builtin_dict_iter(ClFunction* this_function, int argument_count, ClObj** arguments) {
-	ASSERT_ARGUMENT_COUNT(0)
-	static const string* staticstring_dictiterator = new string("dictiterator");
-	ClFunction* f = this_function->parent->create_function(
-		0,
-		false,
-		staticstring_dictiterator,
-		nullptr
-	);
-	f->native_executable_content = cl_builtin_dict_iterator;
-	f->closed_this = this_function->closed_this;
-	f->closed_this->inc_ref();
-	f->cache_as<uint64_t>() = 0;
-	return f;
-}
-
-ClObj* cl_builtin_dict_iterator(ClFunction* this_function, int argument_count, ClObj** arguments) {
-	ASSERT_ARGUMENT_COUNT(0)
-	ClDict* this_dict = assert_kind<ClDict>(this_function->closed_this);
-}
-#endif
 
 ClObj* cl_builtin_len(ClFunction* this_function, int argument_count, ClObj** arguments) {
 	ASSERT_ARGUMENT_COUNT(1)
@@ -689,63 +634,5 @@ ClObj* cl_builtin_getkind(ClFunction* this_function, int argument_count, ClObj**
 	ClString* kind_string = this_function->parent->create<ClString>();
 	kind_string->contents = cl_kind_to_name[arguments[0]->kind];
 	return kind_string;
-}
-
-ClObj* cl_builtin_upto(ClFunction* this_function, int argument_count, ClObj** arguments) {
-	ASSERT_ARGUMENT_COUNT(1)
-	ClDataContext* data_ctx = this_function->parent;
-	cl_int_t count_upto_argument = assert_kind<ClInt>(arguments[0])->value;
-	ClInstance* result = data_ctx->create<ClInstance>();
-	// Make the new result instance inherit from our closed this.
-	result->scope_parent = assert_kind<ClInstance>(this_function->closed_this);
-	result->scope_parent->inc_ref();
-	ClInt* counter = data_ctx->create<ClInt>();
-	counter->value = 0;
-	ClInt* upto = data_ctx->create<ClInt>();
-	upto->value = count_upto_argument;
-	result->table["i"] = counter;
-	result->table["upto"] = upto;
-	return result;
-}
-
-ClObj* cl_builtin_upto_iterator(ClFunction* this_function, int argument_count, ClObj** arguments);
-
-ClObj* cl_builtin_upto_base_iter(ClFunction* this_function, int argument_count, ClObj** arguments) {
-	ASSERT_ARGUMENT_COUNT(0)
-	static const string* staticstring_uptoiterator = new string("uptoiterator");
-	ClFunction* f = this_function->parent->create_function(
-		0,
-		false,
-		staticstring_uptoiterator,
-		nullptr
-	);
-	f->native_executable_content = cl_builtin_upto_iterator;
-	f->closed_this = this_function->closed_this;
-	f->closed_this->inc_ref();
-	return f;
-}
-
-ClObj* cl_builtin_upto_iterator(ClFunction* this_function, int argument_count, ClObj** arguments) {
-	ASSERT_ARGUMENT_COUNT(0)
-	ClDataContext* data_ctx = this_function->parent;
-	ClInstance& this_instance = *assert_kind<ClInstance>(this_function->closed_this);
-	// We now do some unsafe manipulations for efficiency.
-	// If our closed instances are mutated in illegal ways then this could fail horribly.
-	ClInt* i = assert_kind<ClInt>(this_instance.table["i"]);
-	ClInt* upto = assert_kind<ClInt>(this_instance.table["upto"]);
-	if (i->value < upto->value) {
-		// We're going to return i, so increment it before we assign over it in this_instance's table, to avoid freeing it accidentally.
-		i->inc_ref();
-		ClInt* next_counter_value = data_ctx->create<ClInt>();
-		next_counter_value->value = i->value + 1;
-		cl_store_to_object_table(&this_instance, next_counter_value, "i");
-		// Decrement the reference count, because it just got incremented by being inserted into the table.
-		next_counter_value->dec_ref();
-		return i;
-	}
-	// Otherwise, stop iteration.
-	ClStopIteration* stop_iteration = data_ctx->stop_iteration;
-	stop_iteration->inc_ref();
-	return stop_iteration;
 }
 

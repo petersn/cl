@@ -30,9 +30,9 @@ void ClObj::dec_ref() {
 	ref_count--;
 	if (ref_count <= 0) {
 		if (ref_count < 0) {
-			cout << "ERROR! Negative reference count on: kind=" << kind << " of refs=" << ref_count << endl;
-			cout << "(Both that kind and ref-count should be taken with a" << endl;
-			cout << "grain of salt, as they were reading a freed buffer.)" << endl;
+			cerr << "ERROR! Negative reference count on: kind=" << kind << " of refs=" << ref_count << endl;
+			cerr << "(Both that kind and ref-count should be taken with a" << endl;
+			cerr << "grain of salt, as they were reading a freed buffer.)" << endl;
 		}
 		parent->objects.erase(this);
 		parent->objects_freed++;
@@ -48,10 +48,38 @@ ClObj::~ClObj() {
 //	cout << "Calling parent!" << endl;
 }
 
+bool ClObj::is_mutable() const {
+	return true;
+}
+
+void ClObj::dec_mutation_lock() {}
+void ClObj::inc_mutation_lock() {}
+
+// ===== VariablyMutable =====
+
+bool VariablyMutable::is_mutable() const {
+	return mutation_locks == 0;
+}
+
+void VariablyMutable::dec_mutation_lock() {
+	mutation_locks--;
+	if (mutation_locks < 0) {
+		cerr << "ERROR! Negative mutation locks value of: " << mutation_locks << endl;
+	}
+}
+
+void VariablyMutable::inc_mutation_lock() {
+	mutation_locks++;
+}
+
 // ===== ClNil =====
 
 void ClNil::pprint(ostream& os) const {
 	os << "Nil";
+}
+
+bool ClNil::is_mutable() const {
+	return false;
 }
 
 // ===== ClInt =====
@@ -61,6 +89,10 @@ void ClInt::pprint(ostream& os) const {
 	os << value;
 }
 
+bool ClInt::is_mutable() const {
+	return false;
+}
+
 // ===== ClBool =====
 
 void ClBool::pprint(ostream& os) const {
@@ -68,6 +100,10 @@ void ClBool::pprint(ostream& os) const {
 		os << "True";
 	else
 		os << "False";
+}
+
+bool ClBool::is_mutable() const {
+	return false;
 }
 
 // ===== ClList =====
@@ -87,6 +123,18 @@ void ClList::pprint(ostream& os) const {
 		flag = true;
 	}
 	os << "]";
+}
+
+bool ClList::is_mutable() const {
+	return VariablyMutable::is_mutable();
+}
+
+void ClList::dec_mutation_lock() {
+	return VariablyMutable::dec_mutation_lock();
+}
+
+void ClList::inc_mutation_lock() {
+	return VariablyMutable::inc_mutation_lock();
 }
 
 // ===== ClRecord =====
@@ -115,6 +163,10 @@ void ClRecord::pprint(ostream& os) const {
 	os << "]";
 }
 
+bool ClRecord::is_mutable() const {
+	return true;
+}
+
 ClObj* ClRecord::load(int index) const {
 	if (index < 0 or index >= length)
 		cl_crash("Record load index out of range.");
@@ -131,7 +183,9 @@ void ClRecord::store(int index, ClObj* value) {
 }
 
 ClRecord* ClRecord::duplicate() const {
-	auto dup = new ClRecord(distinguisher, length);
+	// We allow fill=nullptr only because we are immediately filling in the record.
+	// In the ClRecord constructor we handle nullptrs, and don't increment references.
+	auto dup = new ClRecord(distinguisher, length, nullptr);
 	for (int i = 0; i < length; i++) {
 		dup->contents[i] = contents[i];
 		contents[i]->inc_ref();
@@ -169,6 +223,7 @@ bool DictHashEntry::operator == (const DictHashEntry& other) const {
 }
 
 size_t std::hash<DictHashEntry>::operator () (const DictHashEntry& entry) const {
+	// XXX: TODO: Implement something reasonable here.
 	return 3;
 }
 
@@ -179,6 +234,22 @@ ClDict::~ClDict() {
 	}
 }
 
+void ClDict::pprint(ostream& os) const {
+	os << "Dict";
+}
+
+bool ClDict::is_mutable() const {
+	return VariablyMutable::is_mutable();
+}
+
+void ClDict::dec_mutation_lock() {
+	return VariablyMutable::dec_mutation_lock();
+}
+
+void ClDict::inc_mutation_lock() {
+	return VariablyMutable::inc_mutation_lock();
+}
+
 ClObj* ClDict::lookup(ClObj* key) {
 	DictHashEntry entry({key});
 	auto it = mapping.find(entry);
@@ -187,28 +258,33 @@ ClObj* ClDict::lookup(ClObj* key) {
 	return it->second;
 }
 
+// XXX: TODO: Think very carefully about the semantics when assigning a dict into itself!
 void ClDict::assign(ClObj* key, ClObj* value) {
+	if (not is_mutable())
+		parent->traceback_and_crash("Attempt to assign in immutable dict.");
 	DictHashEntry entry({key});
 	// Increment reference counts.
+	key->inc_mutation_lock();
 	key->inc_ref();
 	value->inc_ref();
 	// Check if we're overwriting a previous entry, and if so, decrement ref counts.
 	auto it = mapping.find(entry);
 	if (it != mapping.end()) {
+		it->first.contents->dec_mutation_lock();
 		it->first.contents->dec_ref();
 		it->second->dec_ref();
 	}
 	mapping[entry] = value;
 }
 
-void ClDict::pprint(ostream& os) const {
-	os << "Dict";
-}
-
 // ===== ClString =====
 
 void ClString::pprint(ostream& os) const {
 	os << "String(\"" << contents << "\")";
+}
+
+bool ClString::is_mutable() const {
+	return false;
 }
 
 // ===== ClFunction =====
@@ -227,6 +303,10 @@ ClFunction::~ClFunction() {
 
 void ClFunction::pprint(ostream& os) const {
 	os << "Function";
+}
+
+bool ClFunction::is_mutable() const {
+	return false;
 }
 
 ClFunction* ClFunction::produce_bound_method(ClObj* object_who_has_method) {
@@ -271,10 +351,47 @@ void ClInstance::pprint(ostream& os) const {
 	os << "}";
 }
 
+// XXX: Decide what is_mutable really means.
+// Does it mean changing keyquality?
+// Maybe instances should be allowed to be locked too?
+bool ClInstance::is_mutable() const {
+	return false;
+}
+
+// ===== ClMutationLock =====
+
+ClMutationLock::ClMutationLock(ClObj* obj_to_lock) : ClObj(CL_MUTATION_LOCK) {
+	cout << "              LOCKING MUTATION" << endl;
+	locked_obj = obj_to_lock;
+	locked_obj->inc_ref();
+	locked_obj->inc_mutation_lock();
+}
+
+ClMutationLock::~ClMutationLock() {
+	cout << "              UNLOCKING MUTATION" << endl;
+	locked_obj->dec_mutation_lock();
+	locked_obj->dec_ref();
+}
+
+void ClMutationLock::pprint(ostream& os) const {
+	os << "MutationLock{";
+	locked_obj->pprint(os);
+	os << "}";
+}
+
+bool ClMutationLock::is_mutable() const {
+	return false;
+}
+
 // ===== ClStopIteration =====
 
 void ClStopIteration::pprint(ostream& os) const {
 	os << "StopIteration (There should be no non-debugging way to print this object.)";
+}
+
+bool ClStopIteration::is_mutable() const {
+	cl_crash("Why was StopIteration::is_mutable ever even called?");
+	return false;
 }
 
 // ===== ClDataContext =====
@@ -378,6 +495,20 @@ ClFunction* ClDataContext::create_function(int argument_count, bool is_method, c
 	register_object(obj);
 	return obj;
 }
+
+ClMutationLock* ClDataContext::create_mutation_lock(ClObj* obj_to_lock) {
+	ClMutationLock* obj = new ClMutationLock(obj_to_lock);
+	register_object(obj);
+	return obj;
+}
+
+ClRecord* ClDataContext::create_record(cl_int_t distinguisher, cl_int_t length, ClObj* fill) {
+	ClRecord* obj = new ClRecord(distinguisher, length, fill);
+	register_object(obj);
+	return obj;
+}
+
+// Some helper functions.
 
 ClFunction* ClDataContext::create_return_thunk(ClObj* to_return, const std::string* function_name, const std::string* source_file_path) {
 	ClFunction* thunk = create_function(0, false, function_name, source_file_path);

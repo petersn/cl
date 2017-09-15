@@ -47,8 +47,9 @@ if __name__ == "__main__":
 	import sys
 	import readline
 
-	if len(sys.argv) not in (1, 2):
+	if len(sys.argv) not in (1, 2, 3):
 		print "Usage: cl.py [input.cl]"
+		print "Usage: cl.py -c \"code\""
 		print "Gives a REPL if no argument given."
 		exit(1)
 
@@ -56,8 +57,10 @@ if __name__ == "__main__":
 		with open(sys.argv[1]) as f:
 			source_code = f.read()
 		bytecode = cl_compiler.source_to_bytecode(source_code, sys.argv[1])
-		print "Total length:", len(bytecode)
-		with open("/tmp/a", "w") as f: f.write(bytecode)
+		cl_execute_string(bytecode)
+	elif len(sys.argv) == 3:
+		assert sys.argv[1] == "-c"
+		bytecode = cl_compiler.source_to_bytecode(sys.argv[2], "<command line>")
 		cl_execute_string(bytecode)
 	else:
 		print "Cl REPL v(no version number yet)"

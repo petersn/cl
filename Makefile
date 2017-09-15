@@ -1,5 +1,5 @@
 
-CXXFLAGS=-std=c++11 -g -Wall -Wextra -Wno-unused-parameter -fPIC -ldl
+CXXFLAGS=-std=c++11 -g -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -fPIC -ldl
 
 all: cl cl.so stdlib.so
 

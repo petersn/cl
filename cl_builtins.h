@@ -17,6 +17,8 @@ struct ClassBuilderEntry {
 	cl_method_prototype func;
 	std::string string_contents;
 	cl_object_creator_prototype creator;
+	bool is_instance;
+	std::string instance_parent;
 };
 
 void build_into_context_from_entries(ClContext* ctx, const std::vector<ClassBuilderEntry>& entries);

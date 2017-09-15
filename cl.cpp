@@ -1,6 +1,7 @@
 // Some crappy language.
 
 //#define DEBUG_OUTPUT
+//#define LEAK_CHECK
 
 #include <unordered_set>
 #include <iterator>
@@ -246,7 +247,7 @@ ClContext::ClContext() {
 	MAKE_METHOD(CL_LIST, "str", 0, cl_builtin_list_to_string)
 
 	MAKE_METHOD(CL_LIST, "append", 1, cl_builtin_list_append)
-	MAKE_METHOD(CL_LIST, "iter", 0, cl_builtin_list_iter)
+//	MAKE_METHOD(CL_LIST, "iter", 0, cl_builtin_list_iter)
 //	MAKE_METHOD(CL_LIST, "sort", cl_builtin_list_sort)
 //	MAKE_METHOD(CL_LIST, "copy", cl_builtin_list_copy)
 
@@ -272,11 +273,11 @@ ClContext::ClContext() {
 	// Upto is a complicated construction.
 	// Its "closed_this" points to an instance, which it returns children of.
 	// This instance has a single "iter" method, that we extract.
-	MAKE_GLOBAL("upto", 1, cl_builtin_upto)
-	// Give upto a closure over an appropriate instance.
-	ClInstance* upto_base = data_ctx->create<ClInstance>();
-	f->closed_this = upto_base;
-	MAKE_MEMBER_FUNCTION(upto_base, "iter", 0, cl_builtin_upto_base_iter, true)
+//	MAKE_GLOBAL("upto", 1, cl_builtin_upto)
+//	// Give upto a closure over an appropriate instance.
+//	ClInstance* upto_base = data_ctx->create<ClInstance>();
+//	f->closed_this = upto_base;
+//	MAKE_MEMBER_FUNCTION(upto_base, "iter", 0, cl_builtin_upto_base_iter, true)
 
 	// Populate the global scope with builtin values.
 //	cl_store_to_object_table(data_ctx->global_scope, data_ctx->nil, "nil");
@@ -393,8 +394,7 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 				break;
 			}
 			case OPCODE_INDEX("MAKE_RECORD"): {
-				auto obj = new ClRecord(instruction.args[0], instruction.args[1], data_ctx->nil);
-				data_ctx->register_object(obj);
+				auto obj = data_ctx->create_record(instruction.args[0], instruction.args[1], data_ctx->nil);
 				stack.push_back(obj);
 				break;
 			}
@@ -418,8 +418,7 @@ ClObj* ClContext::execute(const string* traceback_name, const string* source_fil
 					&desc.function_name,
 					&desc.source_file_path
 				);
-				ClRecord* func_scope = new ClRecord(0, desc.subscope_length, data_ctx->nil);
-				data_ctx->register_object(func_scope);
+				ClRecord* func_scope = data_ctx->create_record(0, desc.subscope_length, data_ctx->nil);
 				// We then copy into the scope as per our closure descriptor.
 				for (auto& p : desc.subscope_closure_descriptor)
 					func_scope->store(p.second, scope->load(p.first));
@@ -868,12 +867,14 @@ extern "C" void cl_execute_string(const char* input, int length) {
 	ctx->data_ctx->unref_all_permanent_objects();
 
 	// Check for leaked objects.
+#ifdef LEAK_CHECK
 	if (ctx->data_ctx->objects.size() > 0) {
 		cout << "WARNING: Leaked objects:" << endl;
 		for (ClObj* obj : ctx->data_ctx->objects) {
 			cout << "    (" << obj << ") " << *obj << endl;
 		}
 	}
+#endif
 
 	cout << "Freed: " << ctx->data_ctx->objects_freed << endl;
 
